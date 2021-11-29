@@ -35,17 +35,17 @@
 #include "ephy-time-helpers.h"
 #include "ephy-window.h"
 
+#include <adwaita.h>
 #include <ctype.h>
 #include <gtk/gtk.h>
 #include <glib/gi18n.h>
-#include <handy.h>
 #include <string.h>
 #include <time.h>
 
 #define NUM_FETCH_LIMIT 15
 
 struct _EphyHistoryDialog {
-  HdyWindow parent_instance;
+  AdwWindow parent_instance;
 
   EphySnapshotService *snapshot_service;
   EphyHistoryService *history_service;
@@ -88,7 +88,7 @@ struct _EphyHistoryDialog {
   gboolean has_search_results;
 };
 
-G_DEFINE_TYPE (EphyHistoryDialog, ephy_history_dialog, HDY_TYPE_WINDOW)
+G_DEFINE_TYPE (EphyHistoryDialog, ephy_history_dialog, ADW_TYPE_WINDOW)
 
 enum {
   PROP_0,
@@ -195,18 +195,22 @@ static void
 set_selection_active (EphyHistoryDialog *self,
                       gboolean           selection_active)
 {
-  g_autoptr (GList) rows = gtk_container_get_children (GTK_CONTAINER (self->listbox));
-  GList *iter = NULL;
+  int i = 0;
 
   self->selection_active = selection_active;
 
-  for (iter = rows; iter != NULL; iter = g_list_next (iter)) {
-    GObject *row = iter->data;
-    GtkWidget *check_button = GTK_WIDGET (g_object_get_data (row, "check-button"));
-    GtkWidget *separator = GTK_WIDGET (g_object_get_data (row, "separator"));
+  while (TRUE) {
+    GtkListBoxRow *row = gtk_list_box_get_row_at_index (GTK_LIST_BOX (self->listbox), i++);
+    GtkWidget *check_button, *separator;
+
+    if (!row)
+      break;
+
+    check_button = g_object_get_data (G_OBJECT (row), "check-button");
+    separator = g_object_get_data (G_OBJECT (row), "separator");
 
     /* Uncheck all rows when toggling selection mode */
-    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (check_button), FALSE);
+    gtk_check_button_set_active (GTK_CHECK_BUTTON (check_button), FALSE);
 
     /* Show/Hide row selection widgets (check_button + separator) */
     gtk_widget_set_visible (check_button, selection_active);
@@ -244,8 +248,8 @@ set_is_selection_empty (EphyHistoryDialog *self,
 static EphyHistoryURL *
 get_url_from_row (GtkListBoxRow *row)
 {
-  return ephy_history_url_new (hdy_action_row_get_subtitle (HDY_ACTION_ROW (row)),
-                               hdy_preferences_row_get_title (HDY_PREFERENCES_ROW (row)),
+  return ephy_history_url_new (adw_action_row_get_subtitle (ADW_ACTION_ROW (row)),
+                               adw_preferences_row_get_title (ADW_PREFERENCES_ROW (row)),
                                0,
                                0,
                                0);
@@ -254,15 +258,10 @@ get_url_from_row (GtkListBoxRow *row)
 static void
 clear_listbox (GtkWidget *listbox)
 {
-  GList *children, *iter;
+  GtkListBoxRow *row;
 
-  children = gtk_container_get_children (GTK_CONTAINER (listbox));
-
-  for (iter = children; iter; iter = g_list_next (iter)) {
-    gtk_widget_destroy (GTK_WIDGET (iter->data));
-  }
-
-  g_list_free (children);
+  while ((row = gtk_list_box_get_row_at_index (GTK_LIST_BOX (listbox), 0)))
+    gtk_list_box_remove (GTK_LIST_BOX (listbox), GTK_WIDGET (row));
 }
 
 static void
@@ -289,7 +288,7 @@ on_find_urls_cb (gpointer service,
 static GList *
 substrings_filter (EphyHistoryDialog *self)
 {
-  const gchar *search_text = gtk_entry_get_text (GTK_ENTRY (self->search_entry));
+  const gchar *search_text = gtk_editable_get_text (GTK_EDITABLE (self->search_entry));
   char **tokens, **p;
   GList *substrings = NULL;
 
@@ -345,15 +344,19 @@ filter_now (EphyHistoryDialog *self)
 static GList *
 get_checked_rows (EphyHistoryDialog *self)
 {
-  g_autoptr (GList) rows_list = gtk_container_get_children (GTK_CONTAINER (self->listbox));
   GList *checked_rows = NULL;
-  GList *iter = NULL;
+  int i = 0;
 
-  for (iter = rows_list; iter != NULL; iter = g_list_next (iter)) {
-    GObject *row = iter->data;
-    GtkCheckButton *check_button = GTK_CHECK_BUTTON (g_object_get_data (row, "check-button"));
+  while (TRUE) {
+    GtkListBoxRow *row = gtk_list_box_get_row_at_index (GTK_LIST_BOX (self->listbox), i++);
+    GtkCheckButton *check_button;
 
-    if (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (check_button)))
+    if (!row)
+      break;
+
+    check_button = g_object_get_data (G_OBJECT (row), "check-button");
+
+    if (gtk_check_button_get_active (check_button))
       checked_rows = g_list_prepend (checked_rows, row);
   }
 
@@ -410,7 +413,7 @@ row_copy_url_button_clicked (GtkWidget *button,
   g_autoptr (EphyHistoryURL) url = get_url_from_row (row);
 
   if (url)
-    gtk_clipboard_set_text (gtk_widget_get_clipboard (GTK_WIDGET (button), GDK_SELECTION_CLIPBOARD), url->url, -1);
+    gdk_clipboard_set_text (gtk_widget_get_clipboard (GTK_WIDGET (button)), url->url);
 }
 
 static void
@@ -433,11 +436,15 @@ create_row (EphyHistoryDialog *self,
   GtkWidget *separator;
   GtkWidget *check_button;
   GtkWidget *copy_url_button;
+  g_autofree char *escaped_markup = g_markup_escape_text (url->url, -1);
 
   /* Row */
-  row = hdy_action_row_new ();
-  hdy_preferences_row_set_title (HDY_PREFERENCES_ROW (row), url->title);
-  hdy_action_row_set_subtitle (HDY_ACTION_ROW (row), url->url);
+  row = adw_action_row_new ();
+  adw_action_row_set_title_lines (ADW_ACTION_ROW (row), 1);
+  adw_action_row_set_subtitle_lines (ADW_ACTION_ROW (row), 1);
+  adw_action_row_set_subtitle (ADW_ACTION_ROW (row), escaped_markup);
+  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), url->title);
+  adw_action_row_set_subtitle (ADW_ACTION_ROW (row), escaped_markup);
   gtk_list_box_row_set_activatable (GTK_LIST_BOX_ROW (row), TRUE);
   gtk_widget_set_tooltip_text (row, url->url);
 
@@ -460,19 +467,17 @@ create_row (EphyHistoryDialog *self,
   g_signal_connect (check_button, "toggled", G_CALLBACK (row_check_button_toggled), self);
 
   /* Copy URL button */
-  copy_url_button = gtk_button_new_from_icon_name ("edit-copy-symbolic", GTK_ICON_SIZE_BUTTON);
+  copy_url_button = gtk_button_new_from_icon_name ("edit-copy-symbolic");
   gtk_widget_set_valign (copy_url_button, GTK_ALIGN_CENTER);
   gtk_widget_set_tooltip_text (copy_url_button, _("Copy URL"));
   g_signal_connect (copy_url_button, "clicked", G_CALLBACK (row_copy_url_button_clicked), row);
 
-  hdy_action_row_add_prefix (HDY_ACTION_ROW (row), check_button);
-  hdy_action_row_add_prefix (HDY_ACTION_ROW (row), separator);
-  gtk_container_add (GTK_CONTAINER (row), date);
-  gtk_container_add (GTK_CONTAINER (row), copy_url_button);
+  adw_action_row_add_prefix (ADW_ACTION_ROW (row), separator);
+  adw_action_row_add_prefix (ADW_ACTION_ROW (row), check_button);
+  adw_action_row_add_suffix (ADW_ACTION_ROW (row), date);
+  adw_action_row_add_suffix (ADW_ACTION_ROW (row), copy_url_button);
 
   gtk_widget_set_sensitive (check_button, ephy_embed_shell_get_mode (shell) != EPHY_EMBED_SHELL_MODE_INCOGNITO);
-
-  gtk_widget_show_all (row);
 
   /* Hide the Separator and CheckButton if selection isn't active */
   if (!self->selection_active) {
@@ -489,15 +494,14 @@ add_urls_source (EphyHistoryDialog *self)
   EphyHistoryURL *url;
   GList *element;
   GtkWidget *row;
-  GList *children;
+  gboolean has_results;
 
   set_is_loading (self, FALSE);
 
-  children = gtk_container_get_children (GTK_CONTAINER (self->listbox));
-  set_has_search_results (self, !!children);
-  if (!children)
+  has_results = !!gtk_list_box_get_row_at_index (GTK_LIST_BOX (self->listbox), 0);
+  set_has_search_results (self, has_results);
+  if (!has_results)
     set_has_data (self, FALSE);
-  g_list_free (children);
 
   if (!self->urls || !self->num_fetch) {
     self->sorter_source = 0;
@@ -531,7 +535,7 @@ confirmation_dialog_response_cb (GtkWidget         *dialog,
                                  int                response,
                                  EphyHistoryDialog *self)
 {
-  gtk_widget_destroy (dialog);
+  gtk_window_destroy (GTK_WINDOW (dialog));
 
   if (response == GTK_RESPONSE_ACCEPT) {
     ephy_history_service_clear (self->history_service,
@@ -574,7 +578,7 @@ confirmation_dialog_construct (EphyHistoryDialog *self)
 
   return dialog;
 }
-
+/*
 static gboolean
 on_listbox_key_press_event (GtkWidget         *widget,
                             GdkEventKey       *event,
@@ -588,7 +592,7 @@ on_listbox_key_press_event (GtkWidget         *widget,
 
   return FALSE;
 }
-
+*/
 static void
 on_search_entry_changed (GtkSearchEntry    *search_entry,
                          EphyHistoryDialog *self)
@@ -605,13 +609,14 @@ load_further_data (EphyHistoryDialog *self)
   self->sorter_source = g_idle_add ((GSourceFunc)add_urls_source, self);
 }
 
+#if 0
 static gboolean
 on_key_press_event (EphyHistoryDialog *self,
                     GdkEvent          *event,
                     gpointer           user_data)
 {
   GdkEventKey *key = (GdkEventKey *)event;
-  HdySearchBar *search_bar = HDY_SEARCH_BAR (self->search_bar);
+  GtkSearchBar *search_bar = GTK_SEARCH_BAR (self->search_bar);
 
   /* Keep track internally of the Shift modifier needed for the
    * interval selection logic */
@@ -619,13 +624,12 @@ on_key_press_event (EphyHistoryDialog *self,
     self->shift_modifier_active = TRUE;
 
   /* Check if event can be handled by the search bar */
-  if (hdy_search_bar_handle_event (search_bar, event) == GDK_EVENT_STOP)
+  if (adw_search_bar_handle_event (search_bar, event) == GDK_EVENT_STOP)
     return GDK_EVENT_STOP;
 
   if (key->keyval == GDK_KEY_Down || key->keyval == GDK_KEY_Page_Down) {
-    GList *childrens = gtk_container_get_children (GTK_CONTAINER (self->listbox));
-    GtkWidget *last = g_list_last (childrens)->data;
-    GtkWidget *focus = gtk_container_get_focus_child (GTK_CONTAINER (self->listbox));
+    GtkWidget *last = gtk_widget_get_last_child (self->listbox);
+    GtkWidget *focus = gtk_widget_get_focus_child (self->listbox);
 
     if (focus == last) {
       load_further_data (self);
@@ -635,7 +639,7 @@ on_key_press_event (EphyHistoryDialog *self,
   }
 
   if (key->keyval == GDK_KEY_Escape &&
-      !hdy_search_bar_get_search_mode (search_bar)) {
+      !adw_search_bar_get_search_mode (search_bar)) {
     if (self->selection_active)
       set_selection_active (self, FALSE);
     else
@@ -678,6 +682,7 @@ on_key_release_event (EphyHistoryDialog *self,
   /* Don't handle the event */
   return GDK_EVENT_PROPAGATE;
 }
+#endif
 
 static void
 check_rows_interval (GtkListBox *listbox,
@@ -700,7 +705,7 @@ check_rows_interval (GtkListBox *listbox,
     GtkListBoxRow *row = gtk_list_box_get_row_at_index (listbox, index);
     GtkCheckButton *check_button = GTK_CHECK_BUTTON (g_object_get_data (G_OBJECT (row), "check-button"));
 
-    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (check_button), TRUE);
+    gtk_check_button_set_active (check_button, TRUE);
   }
 }
 
@@ -710,11 +715,11 @@ handle_selection_row_activated_event (EphyHistoryDialog *self,
 {
   g_autoptr (GList) checked_rows = get_checked_rows (self);
   GtkCheckButton *check_button = GTK_CHECK_BUTTON (g_object_get_data (G_OBJECT (activated_row), "check-button"));
-  gboolean button_checked = gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (check_button));
+  gboolean button_checked = gtk_check_button_get_active (check_button);
 
   /* If Shift modifier isn't active, event simply toggles the row's checkbox button */
   if (!self->shift_modifier_active) {
-    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (check_button), !button_checked);
+    gtk_check_button_set_active (check_button, !button_checked);
     return;
   }
 
@@ -729,17 +734,21 @@ handle_selection_row_activated_event (EphyHistoryDialog *self,
   } else {
     /* If there are zero or more than one other rows checked,
      * then we check the clicked row and uncheck all the others */
-    g_autoptr (GList) rows = gtk_container_get_children (GTK_CONTAINER (self->listbox));
-    GList *iter = NULL;
+    int i;
 
-    for (iter = rows; iter != NULL; iter = g_list_next (iter)) {
-      GObject *row = iter->data;
-      GtkCheckButton *row_check_btn = GTK_CHECK_BUTTON (g_object_get_data (row, "check-button"));
+    while (TRUE) {
+      GtkListBoxRow *row = gtk_list_box_get_row_at_index (GTK_LIST_BOX (self->listbox), i++);
+      GtkCheckButton *row_check_btn;
 
-      gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (row_check_btn), FALSE);
+      if (!row)
+        break;
+
+      row_check_btn = g_object_get_data (G_OBJECT (row), "check-button");
+
+      gtk_check_button_set_active (row_check_btn, FALSE);
     }
 
-    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (check_button), TRUE);
+    gtk_check_button_set_active (check_button, TRUE);
   }
 }
 
@@ -928,10 +937,10 @@ ephy_history_dialog_class_init (EphyHistoryDialogClass *klass)
   gtk_widget_class_bind_template_child (widget_class, EphyHistoryDialog, selection_delete_button);
   gtk_widget_class_bind_template_child (widget_class, EphyHistoryDialog, selection_open_button);
 
-  gtk_widget_class_bind_template_callback (widget_class, on_listbox_key_press_event);
+//  gtk_widget_class_bind_template_callback (widget_class, on_listbox_key_press_event);
   gtk_widget_class_bind_template_callback (widget_class, on_listbox_row_activated);
-  gtk_widget_class_bind_template_callback (widget_class, on_key_press_event);
-  gtk_widget_class_bind_template_callback (widget_class, on_key_release_event);
+//  gtk_widget_class_bind_template_callback (widget_class, on_key_press_event);
+//  gtk_widget_class_bind_template_callback (widget_class, on_key_release_event);
   gtk_widget_class_bind_template_callback (widget_class, on_selection_button_clicked);
   gtk_widget_class_bind_template_callback (widget_class, on_selection_cancel_button_clicked);
   gtk_widget_class_bind_template_callback (widget_class, on_search_entry_changed);
@@ -969,7 +978,8 @@ ephy_history_dialog_init (EphyHistoryDialog *self)
   self->sorter_source = 0;
   self->is_selection_empty = TRUE;
 
-  hdy_search_bar_connect_entry (HDY_SEARCH_BAR (self->search_bar), GTK_ENTRY (self->search_entry));
+  gtk_search_bar_connect_entry (GTK_SEARCH_BAR (self->search_bar),
+                                GTK_EDITABLE (self->search_entry));
 
   ephy_gui_ensure_window_group (GTK_WINDOW (self));
 
@@ -984,6 +994,6 @@ ephy_history_dialog_init (EphyHistoryDialog *self)
   gtk_widget_set_tooltip_text (self->clear_all_button, tooltip);
   set_is_loading (self, TRUE);
 
-  hdy_status_page_set_icon_name (HDY_STATUS_PAGE (self->empty_history_message),
+  adw_status_page_set_icon_name (ADW_STATUS_PAGE (self->empty_history_message),
                                  APPLICATION_ID "-symbolic");
 }

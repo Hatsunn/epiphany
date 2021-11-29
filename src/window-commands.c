@@ -25,7 +25,7 @@
 
 #include "window-commands.h"
 
-#include "ephy-add-bookmark-popover.h"
+//#include "ephy-add-bookmark-popover.h"
 #include "ephy-bookmarks-export.h"
 #include "ephy-bookmarks-import.h"
 #include "ephy-bookmarks-manager.h"
@@ -252,10 +252,10 @@ show_import_export_result (GtkWindow  *parent,
 
   if (destroy_parent)
     g_signal_connect_swapped (info_dialog, "response",
-                              G_CALLBACK (gtk_widget_destroy), parent);
+                              G_CALLBACK (gtk_window_destroy), parent);
 
   g_signal_connect (info_dialog, "response",
-                    G_CALLBACK (gtk_widget_destroy), NULL);
+                    G_CALLBACK (gtk_window_destroy), NULL);
 
   gtk_window_present (GTK_WINDOW (info_dialog));
 }
@@ -275,11 +275,11 @@ show_firefox_profile_selector_cb (GtkDialog       *selector,
 
     list_box = g_object_get_data (G_OBJECT (selector), "list_box");
     row = gtk_list_box_get_selected_row (GTK_LIST_BOX (list_box));
-    row_widget = gtk_bin_get_child (GTK_BIN (row));
+    row_widget = gtk_list_box_row_get_child (GTK_LIST_BOX_ROW (row));
     selected_profile = g_object_steal_data (G_OBJECT (row_widget), "profile_path");
   }
 
-  gtk_widget_destroy (GTK_WIDGET (selector));
+  gtk_window_destroy (GTK_WINDOW (selector));
 
   /* If there are multiple profiles, but the user didn't select one in
    * the profile (he pressed Cancel), don't display the import info dialog
@@ -332,10 +332,8 @@ show_firefox_profile_selector (GtkWindow *parent,
     gtk_widget_set_margin_bottom (label, 6);
     gtk_list_box_insert (GTK_LIST_BOX (list_box), label, -1);
   }
-  gtk_container_add (GTK_CONTAINER (content_area), list_box);
+  gtk_box_append (GTK_BOX (content_area), list_box);
   g_object_set_data (G_OBJECT (selector), "list_box", list_box);
-
-  gtk_widget_show_all (content_area);
 
   g_signal_connect (selector, "response",
                     G_CALLBACK (show_firefox_profile_selector_cb),
@@ -351,6 +349,7 @@ dialog_bookmarks_import_file_chooser_cb (GtkNativeDialog *file_chooser_dialog,
 {
   EphyBookmarksManager *manager = ephy_shell_get_bookmarks_manager (ephy_shell_get_default ());
   g_autoptr (GError) error = NULL;
+  g_autoptr (GFile) file = NULL;
   g_autofree char *filename = NULL;
   gboolean imported;
 
@@ -359,7 +358,8 @@ dialog_bookmarks_import_file_chooser_cb (GtkNativeDialog *file_chooser_dialog,
   if (response != GTK_RESPONSE_ACCEPT)
     return;
 
-  filename = gtk_file_chooser_get_filename (GTK_FILE_CHOOSER (file_chooser_dialog));
+  file = gtk_file_chooser_get_file (GTK_FILE_CHOOSER (file_chooser_dialog));
+  filename = g_file_get_path (file);
   imported = ephy_bookmarks_import (manager, filename, &error);
 
   show_import_export_result (parent, imported, imported, error,
@@ -396,6 +396,7 @@ dialog_bookmarks_import_from_html_file_chooser_cb (GtkNativeDialog *file_chooser
 {
   EphyBookmarksManager *manager = ephy_shell_get_bookmarks_manager (ephy_shell_get_default ());
   g_autoptr (GError) error = NULL;
+  g_autoptr (GFile) file = NULL;
   g_autofree char *filename = NULL;
   gboolean imported;
 
@@ -404,7 +405,8 @@ dialog_bookmarks_import_from_html_file_chooser_cb (GtkNativeDialog *file_chooser
   if (response != GTK_RESPONSE_ACCEPT)
     return;
 
-  filename = gtk_file_chooser_get_filename (GTK_FILE_CHOOSER (file_chooser_dialog));
+  file = gtk_file_chooser_get_file (GTK_FILE_CHOOSER (file_chooser_dialog));
+  filename = g_file_get_path (file);
   imported = ephy_bookmarks_import_from_html (manager, filename, &error);
 
   show_import_export_result (parent, imported, imported, error,
@@ -522,7 +524,7 @@ dialog_bookmarks_import_cb (GtkWindow       *parent,
         g_assert_not_reached ();
     }
   } else if (response == GTK_RESPONSE_CANCEL) {
-    gtk_widget_destroy (GTK_WIDGET (parent));
+    gtk_window_destroy (GTK_WINDOW (parent));
   }
 }
 
@@ -562,9 +564,10 @@ window_cmd_import_bookmarks (GSimpleAction *action,
   gtk_widget_set_margin_end (content_area, 30);
 
   hbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 12);
+  gtk_widget_set_vexpand (hbox, TRUE);
 
   label = gtk_label_new (_("From:"));
-  gtk_box_pack_start (GTK_BOX (hbox), label, FALSE, TRUE, 0);
+  gtk_box_append (GTK_BOX (hbox), label);
 
   tree_model = create_tree_model ();
   combo_box = gtk_combo_box_new_with_model (GTK_TREE_MODEL (tree_model));
@@ -580,16 +583,16 @@ window_cmd_import_bookmarks (GSimpleAction *action,
   gtk_cell_layout_pack_start (GTK_CELL_LAYOUT (combo_box), cell_renderer, TRUE);
   gtk_cell_layout_set_attributes (GTK_CELL_LAYOUT (combo_box), cell_renderer,
                                   "text", 0, NULL);
-  gtk_box_pack_start (GTK_BOX (hbox), combo_box, FALSE, TRUE, 0);
+  gtk_box_append (GTK_BOX (hbox), combo_box);
 
-  gtk_container_add (GTK_CONTAINER (content_area), hbox);
+  gtk_box_append (GTK_BOX (content_area), hbox);
 
   gtk_dialog_set_default_response (GTK_DIALOG (dialog), GTK_RESPONSE_OK);
   g_signal_connect (dialog, "response",
                     G_CALLBACK (dialog_bookmarks_import_cb),
                     GTK_COMBO_BOX (combo_box));
 
-  gtk_widget_show_all (dialog);
+  gtk_window_present (GTK_WINDOW (dialog));
 }
 
 static void
@@ -617,6 +620,7 @@ export_bookmarks_file_chooser_cb (GtkNativeDialog *dialog,
                                   GtkWindow       *parent)
 {
   EphyBookmarksManager *manager = ephy_shell_get_bookmarks_manager (ephy_shell_get_default ());
+  g_autoptr (GFile) file = NULL;
   g_autofree char *filename = NULL;
 
   gtk_native_dialog_destroy (dialog);
@@ -624,7 +628,8 @@ export_bookmarks_file_chooser_cb (GtkNativeDialog *dialog,
   if (response != GTK_RESPONSE_ACCEPT)
     return;
 
-  filename = gtk_file_chooser_get_filename (GTK_FILE_CHOOSER (dialog));
+  file = gtk_file_chooser_get_file (GTK_FILE_CHOOSER (dialog));
+  filename = g_file_get_path (file);
   ephy_bookmarks_export (g_object_ref (manager),
                          filename,
                          NULL,
@@ -646,7 +651,6 @@ window_cmd_export_bookmarks (GSimpleAction *action,
                                                           GTK_FILE_CHOOSER_ACTION_SAVE,
                                                           _("_Save"),
                                                           _("_Cancel")));
-  gtk_file_chooser_set_show_hidden (dialog, TRUE);
 
   /* Translators: Only translate the part before ".html" (e.g. "bookmarks") */
   gtk_file_chooser_set_current_name (dialog, _("bookmarks.html"));
@@ -748,7 +752,7 @@ dialog_passwords_import_cb (GtkDialog   *dialog,
         g_assert_not_reached ();
     }
   } else {
-    gtk_widget_destroy (GTK_WIDGET (dialog));
+    gtk_window_destroy (GTK_WINDOW (dialog));
   }
 }
 
@@ -804,9 +808,10 @@ window_cmd_import_passwords (GSimpleAction *action,
   gtk_widget_set_margin_end (content_area, 30);
 
   hbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 12);
+  gtk_widget_set_vexpand (hbox, TRUE);
 
   label = gtk_label_new (_("From:"));
-  gtk_box_pack_start (GTK_BOX (hbox), label, FALSE, TRUE, 0);
+  gtk_box_append (GTK_BOX (hbox), label);
 
   tree_model = create_import_passwords_tree_model ();
 
@@ -829,18 +834,17 @@ window_cmd_import_passwords (GSimpleAction *action,
   gtk_cell_layout_pack_start (GTK_CELL_LAYOUT (combo_box), cell_renderer, TRUE);
   gtk_cell_layout_set_attributes (GTK_CELL_LAYOUT (combo_box), cell_renderer,
                                   "text", 0, NULL);
-  gtk_box_pack_start (GTK_BOX (hbox), combo_box, FALSE, TRUE, 0);
+  gtk_box_append (GTK_BOX (hbox), combo_box);
 
-  gtk_container_add (GTK_CONTAINER (content_area), hbox);
+  gtk_box_append (GTK_BOX (content_area), hbox);
 
   gtk_dialog_set_default_response (GTK_DIALOG (dialog), GTK_RESPONSE_OK);
   g_signal_connect (dialog, "response",
                     G_CALLBACK (dialog_passwords_import_cb),
                     GTK_COMBO_BOX (combo_box));
 
-  gtk_widget_show_all (dialog);
+  gtk_window_present (GTK_WINDOW (dialog));
 }
-
 
 void
 window_cmd_show_history (GSimpleAction *action,
@@ -854,7 +858,7 @@ window_cmd_show_history (GSimpleAction *action,
   if (GTK_WINDOW (user_data) != gtk_window_get_transient_for (GTK_WINDOW (dialog)))
     gtk_window_set_transient_for (GTK_WINDOW (dialog),
                                   GTK_WINDOW (user_data));
-  gtk_window_present_with_time (GTK_WINDOW (dialog), gtk_get_current_event_time ());
+  gtk_window_present (GTK_WINDOW (dialog));
 }
 
 void
@@ -869,7 +873,7 @@ window_cmd_show_firefox_sync (GSimpleAction *action,
   if (GTK_WINDOW (user_data) != gtk_window_get_transient_for (GTK_WINDOW (dialog)))
     gtk_window_set_transient_for (GTK_WINDOW (dialog),
                                   GTK_WINDOW (user_data));
-  gtk_window_present_with_time (GTK_WINDOW (dialog), gtk_get_current_event_time ());
+  gtk_window_present (GTK_WINDOW (dialog));
 }
 
 void
@@ -885,7 +889,15 @@ window_cmd_show_preferences (GSimpleAction *action,
     gtk_window_set_transient_for (dialog,
                                   GTK_WINDOW (user_data));
 
-  gtk_window_present_with_time (dialog, gtk_get_current_event_time ());
+  gtk_window_present (dialog);
+}
+
+static void
+window_destroyed (GtkWidget  *widget,
+                  GtkWidget **widget_pointer)
+{
+  if (widget_pointer)
+    *widget_pointer = NULL;
 }
 
 void
@@ -922,7 +934,7 @@ window_cmd_show_shortcuts (GSimpleAction *action,
 
     g_signal_connect (shortcuts_window,
                       "destroy",
-                      G_CALLBACK (gtk_widget_destroyed),
+                      G_CALLBACK (window_destroyed),
                       &shortcuts_window);
 
     g_object_unref (builder);
@@ -931,7 +943,7 @@ window_cmd_show_shortcuts (GSimpleAction *action,
   if (gtk_window_get_transient_for (GTK_WINDOW (shortcuts_window)) != GTK_WINDOW (user_data))
     gtk_window_set_transient_for (GTK_WINDOW (shortcuts_window), GTK_WINDOW (user_data));
 
-  gtk_window_present_with_time (GTK_WINDOW (shortcuts_window), gtk_get_current_event_time ());
+  gtk_window_present (GTK_WINDOW (shortcuts_window));
 }
 
 void
@@ -1045,7 +1057,7 @@ window_cmd_show_about (GSimpleAction *action,
   gtk_about_dialog_set_translator_credits (dialog, _("translator-credits"));
 
   g_signal_connect (dialog, "response",
-                    G_CALLBACK (gtk_widget_destroy), NULL);
+                    G_CALLBACK (gtk_window_destroy), NULL);
   gtk_window_present (GTK_WINDOW (dialog));
 
   g_free (comments);
@@ -1123,7 +1135,7 @@ window_cmd_navigation_new_tab (GSimpleAction *action,
     back_uri = webkit_back_forward_list_item_get_original_uri (back_item);
 
     embed = ephy_shell_new_tab (ephy_shell_get_default (),
-                                EPHY_WINDOW (gtk_widget_get_toplevel (GTK_WIDGET (embed))),
+                                EPHY_WINDOW (gtk_widget_get_root (GTK_WIDGET (embed))),
                                 NULL,
                                 0);
 
@@ -1143,7 +1155,7 @@ window_cmd_navigation_new_tab (GSimpleAction *action,
     forward_uri = webkit_back_forward_list_item_get_original_uri (forward_item);
 
     embed = ephy_shell_new_tab (ephy_shell_get_default (),
-                                EPHY_WINDOW (gtk_widget_get_toplevel (GTK_WIDGET (embed))),
+                                EPHY_WINDOW (gtk_widget_get_root (GTK_WIDGET (embed))),
                                 embed,
                                 0);
 
@@ -1176,7 +1188,7 @@ check_tab_has_modified_forms_confirm_cb (GtkDialog       *dialog,
 {
   WebKitWebView *view = EPHY_GET_WEBKIT_WEB_VIEW_FROM_EMBED (embed);
 
-  gtk_widget_destroy (GTK_WIDGET (dialog));
+  gtk_window_destroy (GTK_WINDOW (dialog));
 
   if (response == GTK_RESPONSE_ACCEPT) {
     gtk_widget_grab_focus (GTK_WIDGET (embed));
@@ -1191,7 +1203,7 @@ check_tab_has_modified_forms_and_reload_cb (EphyWebView  *view,
                                             GAsyncResult *result,
                                             EphyEmbed    *embed)
 {
-  EphyWindow *window = EPHY_WINDOW (gtk_widget_get_toplevel (GTK_WIDGET (view)));
+  EphyWindow *window = EPHY_WINDOW (gtk_widget_get_root (GTK_WIDGET (view)));
   GtkWidget *dialog;
   GtkWidget *button;
   gboolean has_modified_forms;
@@ -1272,7 +1284,7 @@ window_cmd_combined_stop_reload (GSimpleAction *action,
   GAction *gaction;
   GVariant *state;
 
-  action_group = gtk_widget_get_action_group (GTK_WIDGET (user_data), "toolbar");
+  action_group = ephy_window_get_action_group (EPHY_WINDOW (user_data), "toolbar");
 
   state = g_action_get_state (G_ACTION (action));
   /* If loading */
@@ -1295,12 +1307,10 @@ window_cmd_page_menu (GSimpleAction *action,
   EphyWindow *window = EPHY_WINDOW (user_data);
   EphyHeaderBar *header_bar;
   GtkMenuButton *button;
-  GtkPopover *popover;
 
   header_bar = EPHY_HEADER_BAR (ephy_window_get_header_bar (window));
   button = GTK_MENU_BUTTON (ephy_header_bar_get_page_menu_button (header_bar));
-  popover = gtk_menu_button_get_popover (button);
-  gtk_popover_popup (popover);
+  gtk_menu_button_popup (button);
 }
 
 void
@@ -1324,6 +1334,7 @@ window_cmd_new_tab (GSimpleAction *action,
   g_free (url);
 }
 
+#if 0
 static void
 open_response_cb (GtkNativeDialog *dialog,
                   int              response,
@@ -2218,6 +2229,7 @@ window_cmd_redo (GSimpleAction *action,
     }
   }
 }
+
 void
 window_cmd_cut (GSimpleAction *action,
                 GVariant      *parameter,
@@ -2296,6 +2308,7 @@ window_cmd_paste_as_plain_text (GSimpleAction *action,
     webkit_web_view_execute_editing_command (EPHY_GET_WEBKIT_WEB_VIEW_FROM_EMBED (embed), WEBKIT_EDITING_COMMAND_PASTE_AS_PLAIN_TEXT);
   }
 }
+#endif
 
 void
 window_cmd_delete (GSimpleAction *action,
@@ -2383,11 +2396,13 @@ window_cmd_open_bookmark (GSimpleAction *action,
   EphyLinkFlags flags;
 
   address = g_variant_get_string (parameter, NULL);
-  flags = ephy_link_flags_from_current_event () | EPHY_LINK_BOOKMARK;
+//  flags = ephy_link_flags_from_current_event () | EPHY_LINK_BOOKMARK;
+  flags = EPHY_LINK_BOOKMARK; // FIXME
 
   ephy_link_open (EPHY_LINK (user_data), address, NULL, flags);
 }
 
+#if 0
 void
 window_cmd_bookmark_page (GSimpleAction *action,
                           GVariant      *parameter,
@@ -2405,6 +2420,7 @@ window_cmd_bookmark_page (GSimpleAction *action,
 
   ephy_add_bookmark_popover_show (EPHY_ADD_BOOKMARK_POPOVER (popover));
 }
+#endif
 
 void
 window_cmd_bookmarks (GSimpleAction *action,
@@ -2518,7 +2534,7 @@ window_cmd_page_source (GSimpleAction *action,
 
   new_embed = ephy_shell_new_tab
                 (ephy_shell_get_default (),
-                EPHY_WINDOW (gtk_widget_get_toplevel (GTK_WIDGET (embed))),
+                EPHY_WINDOW (gtk_widget_get_root (GTK_WIDGET (embed))),
                 embed,
                 EPHY_NEW_TAB_JUMP | EPHY_NEW_TAB_APPEND_AFTER);
 
@@ -2585,7 +2601,6 @@ window_cmd_send_to (GSimpleAction *action,
   EphyEmbed *embed;
   char *command, *subject, *body;
   const char *location, *title;
-  GError *error = NULL;
 
   embed = ephy_embed_container_get_active_child
             (EPHY_EMBED_CONTAINER (window));
@@ -2604,10 +2619,7 @@ window_cmd_send_to (GSimpleAction *action,
   g_free (subject);
   g_free (body);
 
-  if (!gtk_show_uri_on_window (GTK_WINDOW (window), command, gtk_get_current_event_time (), &error)) {
-    g_warning ("Unable to send link by email: %s\n", error->message);
-    g_error_free (error);
-  }
+  gtk_show_uri (GTK_WINDOW (window), command, GDK_CURRENT_TIME);
 
   g_free (command);
 }
@@ -2620,6 +2632,7 @@ window_cmd_go_location (GSimpleAction *action,
   ephy_window_activate_location (user_data);
 }
 
+#if 0
 void
 window_cmd_location_search (GSimpleAction *action,
                             GVariant      *parameter,
@@ -2627,6 +2640,7 @@ window_cmd_location_search (GSimpleAction *action,
 {
   ephy_window_location_search (user_data);
 }
+#endif
 
 void
 window_cmd_go_home (GSimpleAction *action,
@@ -2659,10 +2673,10 @@ enable_browse_with_caret_state_cb (GtkMessageDialog *dialog,
                                    GtkResponseType   response,
                                    EphyWindow       *window)
 {
-  GActionGroup *action_group = gtk_widget_get_action_group (GTK_WIDGET (window), "win");
+  GActionGroup *action_group = ephy_window_get_action_group (window, "win");
   GAction *action;
 
-  gtk_widget_destroy (GTK_WIDGET (dialog));
+  gtk_window_destroy (GTK_WINDOW (dialog));
 
   action = g_action_map_lookup_action (G_ACTION_MAP (action_group),
                                        "browse-with-caret");
@@ -2904,7 +2918,7 @@ window_cmd_homepage_new_tab (GSimpleAction *action,
   g_assert (embed != NULL);
 
   embed = ephy_shell_new_tab (ephy_shell_get_default (),
-                              EPHY_WINDOW (gtk_widget_get_toplevel (GTK_WIDGET (embed))),
+                              EPHY_WINDOW (gtk_widget_get_root (GTK_WIDGET (embed))),
                               NULL,
                               0);
 
@@ -2917,18 +2931,26 @@ window_cmd_homepage_new_tab (GSimpleAction *action,
 }
 
 static void
-clipboard_text_received_cb (GtkClipboard *clipboard,
-                            const gchar  *text,
+clipboard_text_received_cb (GdkClipboard *clipboard,
+                            GAsyncResult *res,
                             EphyWindow   *window)
 {
   EphyEmbed *embed;
   EphyWebView *web_view;
+  g_autoptr (GError) error = NULL;
+  g_autofree char *text;
+
+  text = gdk_clipboard_read_text_finish (clipboard, res, &error);
+  if (error) {
+    g_warning ("Failed to the URL from clipboard: %s", error->message);
+    return;
+  }
 
   embed = ephy_embed_container_get_active_child (EPHY_EMBED_CONTAINER (window));
   g_assert (embed != NULL);
 
   embed = ephy_shell_new_tab (ephy_shell_get_default (),
-                              EPHY_WINDOW (gtk_widget_get_toplevel (GTK_WIDGET (embed))),
+                              EPHY_WINDOW (gtk_widget_get_root (GTK_WIDGET (embed))),
                               NULL,
                               0);
 
@@ -2947,12 +2969,13 @@ window_cmd_new_tab_from_clipboard (GSimpleAction *action,
                                    gpointer       user_data)
 {
   EphyWindow *ephy_window = EPHY_WINDOW (user_data);
-  GtkClipboard *clipboard;
+  GdkClipboard *clipboard;
 
-  clipboard = gtk_clipboard_get_default (gdk_display_get_default ());
-  gtk_clipboard_request_text (clipboard,
-                              (GtkClipboardTextReceivedFunc)clipboard_text_received_cb,
-                              g_object_ref (ephy_window));
+  clipboard = gtk_widget_get_clipboard (GTK_WIDGET (ephy_window));
+  gdk_clipboard_read_text_async (clipboard,
+                                 NULL,
+                                 (GAsyncReadyCallback) clipboard_text_received_cb,
+                                 g_object_ref (ephy_window));
 }
 
 void
@@ -3010,5 +3033,5 @@ window_cmd_extensions (GSimpleAction *action,
 
   dialog = ephy_web_extension_dialog_new ();
   gtk_window_set_transient_for (GTK_WINDOW (dialog), GTK_WINDOW (window));
-  gtk_widget_show_all (dialog);
+  gtk_window_present (GTK_WINDOW (dialog));
 }

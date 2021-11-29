@@ -50,7 +50,6 @@
 
 #include <glib/gi18n.h>
 #include <gtk/gtk.h>
-#include <handy.h>
 
 struct _EphyShell {
   EphyEmbedShell parent_instance;
@@ -339,7 +338,7 @@ launch_app (GSimpleAction *action,
    * is disabled when running under flatpak.
    */
   ephy_file_launch_desktop_file (desktop_file,
-                                 gtk_get_current_event_time (),
+                                 g_get_monotonic_time (),
                                  EPHY_FILE_HELPERS_I_UNDERSTAND_I_MUST_NOT_USE_THIS_FUNCTION_UNDER_FLATPAK);
 }
 
@@ -492,11 +491,6 @@ ephy_shell_startup (GApplication *application)
   GAction *action;
 
   G_APPLICATION_CLASS (ephy_shell_parent_class)->startup (application);
-
-  hdy_init ();
-
-  hdy_style_manager_set_color_scheme (hdy_style_manager_get_default (),
-                                      HDY_COLOR_SCHEME_PREFER_LIGHT);
 
   /* If we are under Pantheon set the icon-theme and cursor-theme accordingly. */
   if (is_desktop_pantheon ()) {
@@ -819,8 +813,8 @@ ephy_shell_constructed (GObject *object)
   }
 
   if (ephy_embed_shell_get_mode (EPHY_EMBED_SHELL (object)) == EPHY_EMBED_SHELL_MODE_APPLICATION) {
-    dzl_application_add_resources (DZL_APPLICATION (object),
-                                   "resource:///org/gnome/Epiphany");
+//    dzl_application_add_resources (DZL_APPLICATION (object),
+//                                   "resource:///org/gnome/Epiphany");
   }
 
   /* FIXME: not sure if this is the best place to put this stuff. */
@@ -876,7 +870,7 @@ ephy_shell_dispose (GObject *object)
 
   g_clear_object (&shell->session);
   g_clear_object (&shell->lockdown);
-  g_clear_pointer (&shell->history_dialog, gtk_widget_destroy);
+  g_clear_pointer ((GtkWindow **) &shell->history_dialog, gtk_window_destroy);
   g_clear_object (&shell->prefs_dialog);
   g_clear_object (&shell->network_monitor);
   g_clear_object (&shell->sync_service);
@@ -1169,7 +1163,6 @@ ephy_shell_get_bookmarks_manager (EphyShell *shell)
 
   return shell->bookmarks_manager;
 }
-
 /**
  * ephy_shell_get_history_manager:
  * @shell: the #EphyShell
@@ -1220,6 +1213,14 @@ ephy_shell_get_net_monitor (EphyShell *shell)
   return shell->network_monitor;
 }
 
+static void
+window_destroyed (GtkWidget  *widget,
+                  GtkWidget **widget_pointer)
+{
+  if (widget_pointer)
+    *widget_pointer = NULL;
+}
+
 /**
  * ephy_shell_get_history_dialog:
  *
@@ -1238,7 +1239,7 @@ ephy_shell_get_history_dialog (EphyShell *shell)
     shell->history_dialog = ephy_history_dialog_new (service);
     g_signal_connect (shell->history_dialog,
                       "destroy",
-                      G_CALLBACK (gtk_widget_destroyed),
+                      G_CALLBACK (window_destroyed),
                       &shell->history_dialog);
   }
 
@@ -1257,7 +1258,7 @@ ephy_shell_get_firefox_sync_dialog (EphyShell *shell)
     shell->firefox_sync_dialog = ephy_firefox_sync_dialog_new ();
     g_signal_connect (shell->firefox_sync_dialog,
                       "destroy",
-                      G_CALLBACK (gtk_widget_destroyed),
+                      G_CALLBACK (window_destroyed),
                       &shell->firefox_sync_dialog);
   }
 
@@ -1277,7 +1278,7 @@ ephy_shell_get_prefs_dialog (EphyShell *shell)
 
     g_signal_connect (shell->prefs_dialog,
                       "destroy",
-                      G_CALLBACK (gtk_widget_destroyed),
+                      G_CALLBACK (window_destroyed),
                       &shell->prefs_dialog);
   }
 
@@ -1359,7 +1360,7 @@ ephy_shell_close_all_windows (EphyShell *shell)
     windows = windows->next;
 
     if (ephy_window_close (window))
-      gtk_widget_destroy (GTK_WIDGET (window));
+      gtk_window_destroy (GTK_WINDOW (window));
     else
       retval = FALSE;
   }

@@ -147,18 +147,17 @@ const struct {
 #define SETTINGS_CONNECTION_DATA_KEY    "EphyWindowSettings"
 
 struct _EphyWindow {
-  HdyApplicationWindow parent_instance;
+  AdwApplicationWindow parent_instance;
 
-  GtkWidget *main_deck;
+  GtkWidget *main_leaflet;
   EphyFullscreenBox *fullscreen_box;
-  GtkWidget *window_handle;
   GtkBox *titlebar_box;
   GtkWidget *header_bar;
   EphyPagesView *pages_view;
   EphyBookmarksManager *bookmarks_manager;
   GHashTable *action_labels;
   EphyTabView *tab_view;
-  HdyTabBar *tab_bar;
+  AdwTabBar *tab_bar;
   GtkRevealer *tab_bar_revealer;
   GtkRevealer *pages_menu_revealer;
   EphyPagesPopover *pages_popover;
@@ -185,7 +184,6 @@ struct _EphyWindow {
   gint current_y;
 
   guint has_default_size : 1;
-  guint has_default_position : 1;
   guint is_maximized : 1;
   guint is_fullscreen : 1;
   guint closing : 1;
@@ -196,7 +194,7 @@ struct _EphyWindow {
   guint confirmed_close_with_multiple_tabs : 1;
   guint present_on_insert : 1;
 
-  guint32 present_on_insert_user_time;
+  GHashTable *action_groups;
 };
 
 enum {
@@ -204,7 +202,6 @@ enum {
   PROP_ACTIVE_CHILD,
   PROP_CHROME,
   PROP_SINGLE_TAB_MODE,
-  PROP_FULLSCREEN
 };
 
 /* Make sure not to overlap with those in ephy-lockdown.c */
@@ -352,7 +349,7 @@ ephy_window_open_link (EphyLink      *link,
                EPHY_LINK_NEW_TAB |
                EPHY_LINK_NEW_WINDOW)) {
     EphyNewTabFlags ntflags = 0;
-    EphyWindow *target_window = EPHY_WINDOW (gtk_widget_get_toplevel (GTK_WIDGET (embed)));
+    EphyWindow *target_window = EPHY_WINDOW (gtk_widget_get_root (GTK_WIDGET (embed)));
 
     if (flags & EPHY_LINK_JUMP_TO) {
       ntflags |= EPHY_NEW_TAB_JUMP;
@@ -398,7 +395,7 @@ ephy_window_link_iface_init (EphyLinkInterface *iface)
   iface->open_link = ephy_window_open_link;
 }
 
-G_DEFINE_TYPE_WITH_CODE (EphyWindow, ephy_window, HDY_TYPE_APPLICATION_WINDOW,
+G_DEFINE_TYPE_WITH_CODE (EphyWindow, ephy_window, ADW_TYPE_APPLICATION_WINDOW,
                          G_IMPLEMENT_INTERFACE (EPHY_TYPE_LINK,
                                                 ephy_window_link_iface_init)
                          G_IMPLEMENT_INTERFACE (EPHY_TYPE_EMBED_CONTAINER,
@@ -447,7 +444,7 @@ sync_tab_load_status (EphyWebView     *view,
 
   loading = ephy_web_view_is_loading (view);
 
-  action_group = gtk_widget_get_action_group (GTK_WIDGET (window), "win");
+  action_group = ephy_window_get_action_group (window, "win");
 
   /* disable print while loading, see bug #116344 */
   action = g_action_map_lookup_action (G_ACTION_MAP (action_group),
@@ -455,7 +452,7 @@ sync_tab_load_status (EphyWebView     *view,
   ephy_action_change_sensitivity_flags (G_SIMPLE_ACTION (action),
                                         SENS_FLAG_LOADING, loading);
 
-  action_group = gtk_widget_get_action_group (GTK_WIDGET (window), "toolbar");
+  action_group = ephy_window_get_action_group (window, "toolbar");
 
   action = g_action_map_lookup_action (G_ACTION_MAP (action_group),
                                        "stop");
@@ -492,21 +489,21 @@ update_adaptive_mode (EphyWindow *window)
   EphyAdaptiveMode adaptive_mode;
   gint width, height;
   GdkDisplay *display;
-  GdkWindow *surface;
+  GdkSurface *surface;
   GdkMonitor *monitor = NULL;
   GdkRectangle geometry = {};
 
-  gtk_window_get_size (GTK_WINDOW (window),
-                       &width,
-                       &height);
+  gtk_window_get_default_size (GTK_WINDOW (window),
+                               &width,
+                               &height);
 
   /* Get the monitor to guess whether we are on a mobile or not. If not found,
    * fallback to the window size.
    */
   display = gtk_widget_get_display (GTK_WIDGET (window));
-  surface = gtk_widget_get_window (GTK_WIDGET (window));
+  surface = gtk_native_get_surface (GTK_NATIVE (window));
   if (display != NULL && surface != NULL)
-    monitor = gdk_display_get_monitor_at_window (display, surface);
+    monitor = gdk_display_get_monitor_at_surface (display, surface);
   if (monitor != NULL)
     gdk_monitor_get_geometry (monitor, &geometry);
   else
@@ -538,32 +535,47 @@ update_adaptive_mode (EphyWindow *window)
 }
 
 static void
-ephy_window_fullscreen (EphyWindow *window)
+notify_fullscreen_cb (EphyWindow *window)
 {
   EphyEmbed *embed;
+  gboolean fullscreen = gtk_window_is_fullscreen (GTK_WINDOW (window));
+  GAction *action;
+  GActionGroup *action_group;
 
-  window->is_fullscreen = TRUE;
-  g_object_notify (G_OBJECT (window), "fullscreen");
+  window->is_fullscreen = fullscreen;
 
-  /* sync status */
   embed = window->active_embed;
-  sync_tab_load_status (ephy_embed_get_web_view (embed), WEBKIT_LOAD_STARTED, window);
-  sync_tab_security (ephy_embed_get_web_view (embed), NULL, window);
+
+  if (embed && fullscreen) {
+    /* sync status */
+    sync_tab_load_status (ephy_embed_get_web_view (embed), WEBKIT_LOAD_STARTED, window);
+    sync_tab_security (ephy_embed_get_web_view (embed), NULL, window);
+  }
 
   update_adaptive_mode (window);
-  ephy_embed_entering_fullscreen (embed);
+
+  if (embed) {
+    if (fullscreen)
+      ephy_embed_entering_fullscreen (embed);
+    else
+      ephy_embed_leaving_fullscreen (embed);
+  }
+
+  ephy_fullscreen_box_set_fullscreen (window->fullscreen_box,
+                                      fullscreen && window->show_fullscreen_header_bar);
+  gtk_widget_set_visible (GTK_WIDGET (window->titlebar_box),
+                          !fullscreen || window->show_fullscreen_header_bar);
+
+  window->show_fullscreen_header_bar = FALSE;
+
+  action_group = ephy_window_get_action_group (window, "win");
+  action = g_action_map_lookup_action (G_ACTION_MAP (action_group), "fullscreen");
+
+  g_simple_action_set_state (G_SIMPLE_ACTION (action),
+                             g_variant_new_boolean (fullscreen));
 }
 
-static void
-ephy_window_unfullscreen (EphyWindow *window)
-{
-  window->is_fullscreen = FALSE;
-  g_object_notify (G_OBJECT (window), "fullscreen");
-
-  update_adaptive_mode (window);
-  ephy_embed_leaving_fullscreen (window->active_embed);
-}
-
+#if 0
 static gboolean
 ephy_window_should_view_receive_key_press_event (EphyWindow  *window,
                                                  GdkEventKey *event)
@@ -681,6 +693,7 @@ ephy_window_delete_event (GtkWidget   *widget,
 
   return FALSE;
 }
+#endif
 
 #define MAX_SPELL_CHECK_GUESSES 4
 
@@ -691,7 +704,7 @@ update_link_actions_sensitivity (EphyWindow *window,
   GAction *action;
   GActionGroup *action_group;
 
-  action_group = gtk_widget_get_action_group (GTK_WIDGET (window), "popup");
+  action_group = ephy_window_get_action_group (window, "popup");
 
   action = g_action_map_lookup_action (G_ACTION_MAP (action_group),
                                        "open-link-in-new-window");
@@ -715,8 +728,7 @@ update_edit_action_sensitivity (EphyWindow *window,
   GActionGroup *action_group;
   GAction *action;
 
-  action_group = gtk_widget_get_action_group (GTK_WIDGET (window),
-                                              "win");
+  action_group = ephy_window_get_action_group (window, "win");
 
   action = g_action_map_lookup_action (G_ACTION_MAP (action_group),
                                        action_name);
@@ -741,10 +753,10 @@ update_edit_actions_sensitivity (EphyWindow *window,
     can_cut = has_selection;
     can_copy = has_selection;
     can_paste = TRUE;
-    can_undo = EPHY_IS_LOCATION_ENTRY (title_widget) &&
-               ephy_location_entry_get_can_undo (EPHY_LOCATION_ENTRY (title_widget));
-    can_redo = EPHY_IS_LOCATION_ENTRY (title_widget) &&
-               ephy_location_entry_get_can_redo (EPHY_LOCATION_ENTRY (title_widget));
+//    can_undo = EPHY_IS_LOCATION_ENTRY (title_widget) &&
+//               ephy_location_entry_get_can_undo (EPHY_LOCATION_ENTRY (title_widget));
+//    can_redo = EPHY_IS_LOCATION_ENTRY (title_widget) &&
+//               ephy_location_entry_get_can_redo (EPHY_LOCATION_ENTRY (title_widget));
   } else {
     EphyEmbed *embed;
     WebKitWebView *view;
@@ -777,8 +789,7 @@ enable_edit_actions_sensitivity (EphyWindow *window)
   GActionGroup *action_group;
   GAction *action;
 
-  action_group = gtk_widget_get_action_group (GTK_WIDGET (window),
-                                              "win");
+  action_group = ephy_window_get_action_group (window, "win");
 
   action = g_action_map_lookup_action (G_ACTION_MAP (action_group), "cut");
   g_simple_action_set_enabled (G_SIMPLE_ACTION (action), TRUE);
@@ -817,16 +828,16 @@ change_combined_stop_reload_state (GSimpleAction *action,
 static const GActionEntry window_entries [] = {
   { "page-menu", window_cmd_page_menu },
   { "new-tab", window_cmd_new_tab },
-  { "open", window_cmd_open },
-  { "save-as", window_cmd_save_as },
-  { "save-as-application", window_cmd_save_as_application },
+//  { "open", window_cmd_open },
+//  { "save-as", window_cmd_save_as },
+//  { "save-as-application", window_cmd_save_as_application },
   { "open-application-manager", window_cmd_open_application_manager },
-  { "undo", window_cmd_undo },
-  { "redo", window_cmd_redo },
-  { "cut", window_cmd_cut },
-  { "copy", window_cmd_copy },
-  { "paste", window_cmd_paste },
-  { "paste-as-plain-text", window_cmd_paste_as_plain_text },
+//  { "undo", window_cmd_undo },
+//  { "redo", window_cmd_redo },
+//  { "cut", window_cmd_cut },
+//  { "copy", window_cmd_copy },
+//  { "paste", window_cmd_paste },
+//  { "paste-as-plain-text", window_cmd_paste_as_plain_text },
   { "delete", window_cmd_delete },
   { "zoom-in", window_cmd_zoom_in },
   { "zoom-out", window_cmd_zoom_out },
@@ -836,7 +847,7 @@ static const GActionEntry window_entries [] = {
   { "find-prev", window_cmd_find_prev },
   { "find-next", window_cmd_find_next },
   { "open-bookmark", window_cmd_open_bookmark, "s" },
-  { "bookmark-page", window_cmd_bookmark_page },
+//  { "bookmark-page", window_cmd_bookmark_page },
   { "bookmarks", window_cmd_bookmarks },
   { "show-downloads", window_cmd_show_downloads },
   { "encoding", window_cmd_encoding },
@@ -849,7 +860,7 @@ static const GActionEntry window_entries [] = {
 
   { "send-to", window_cmd_send_to },
   { "location", window_cmd_go_location },
-  { "location-search", window_cmd_location_search },
+//  { "location-search", window_cmd_location_search },
   { "home", window_cmd_go_home },
   { "content", window_cmd_go_content },
   { "tabs-view", window_cmd_go_tabs_view },
@@ -887,7 +898,7 @@ static const GActionEntry toolbar_entries [] = {
 };
 
 static const GActionEntry popup_entries [] = {
-  { "context-bookmark-page", window_cmd_bookmark_page },
+//  { "context-bookmark-page", window_cmd_bookmark_page },
   /* Links. */
 
   { "open-link-in-new-window", popup_cmd_link_in_new_window },
@@ -1019,7 +1030,7 @@ _ephy_window_set_default_actions_sensitive (EphyWindow *window,
     NULL
   };
 
-  action_group = gtk_widget_get_action_group (GTK_WIDGET (window), "win");
+  action_group = ephy_window_get_action_group (window, "win");
 
   /* Page menu */
   for (i = 0; action_group_actions[i] != NULL; i++) {
@@ -1030,14 +1041,14 @@ _ephy_window_set_default_actions_sensitive (EphyWindow *window,
   }
 
   /* Page context popup */
-  action_group = gtk_widget_get_action_group (GTK_WIDGET (window), "popup");
+  action_group = ephy_window_get_action_group (window, "popup");
   action = g_action_map_lookup_action (G_ACTION_MAP (action_group),
                                        "context-bookmark-page");
   ephy_action_change_sensitivity_flags (G_SIMPLE_ACTION (action),
                                         flags, set);
 
   /* Toolbar */
-  action_group = gtk_widget_get_action_group (GTK_WIDGET (window), "toolbar");
+  action_group = ephy_window_get_action_group (window, "toolbar");
   action = g_action_map_lookup_action (G_ACTION_MAP (action_group),
                                        "combined-stop-reload");
   ephy_action_change_sensitivity_flags (G_SIMPLE_ACTION (action),
@@ -1103,8 +1114,7 @@ sync_tab_zoom (WebKitWebView *web_view,
     can_zoom_normal = TRUE;
   }
 
-  action_group = gtk_widget_get_action_group (GTK_WIDGET (window),
-                                              "win");
+  action_group = ephy_window_get_action_group (window, "win");
 
   action = g_action_map_lookup_action (G_ACTION_MAP (action_group), "zoom-in");
   g_simple_action_set_enabled (G_SIMPLE_ACTION (action), can_zoom_in);
@@ -1135,8 +1145,7 @@ sync_tab_document_type (EphyWebView *view,
   is_image = type == EPHY_WEB_VIEW_DOCUMENT_IMAGE;
   disable = (type != EPHY_WEB_VIEW_DOCUMENT_HTML);
 
-  action_group = gtk_widget_get_action_group (GTK_WIDGET (window),
-                                              "win");
+  action_group = ephy_window_get_action_group (window, "win");
 
   action = g_action_map_lookup_action (G_ACTION_MAP (action_group), "encoding");
   ephy_action_change_sensitivity_flags (G_SIMPLE_ACTION (action), SENS_FLAG_DOCUMENT, disable);
@@ -1161,7 +1170,7 @@ _ephy_window_set_navigation_flags (EphyWindow                 *window,
   GActionGroup *action_group;
   GAction *action;
 
-  action_group = gtk_widget_get_action_group (GTK_WIDGET (window), "toolbar");
+  action_group = ephy_window_get_action_group (window, "toolbar");
 
   action = g_action_map_lookup_action (G_ACTION_MAP (action_group), "navigation-back");
   g_simple_action_set_enabled (G_SIMPLE_ACTION (action), flags & EPHY_WEB_VIEW_NAV_BACK);
@@ -1198,18 +1207,18 @@ void
 ephy_window_sync_bookmark_state (GtkWidget             *widget,
                                  EphyBookmarkIconState  state)
 {
-  GtkWidget *toplevel = gtk_widget_get_toplevel (GTK_WIDGET (widget));
-  EphyWindow *window = EPHY_WINDOW (toplevel);
+  GtkRoot *root = gtk_widget_get_root (GTK_WIDGET (widget));
+  EphyWindow *window = EPHY_WINDOW (root);
   EphyActionBarEnd *action_bar_end = ephy_action_bar_get_action_bar_end (EPHY_ACTION_BAR (window->action_bar));
-  GtkWidget *lentry;
+//  GtkWidget *lentry;
 
   if (action_bar_end)
     ephy_action_bar_end_set_bookmark_icon_state (EPHY_ACTION_BAR_END (action_bar_end), state);
 
-  lentry = GTK_WIDGET (ephy_header_bar_get_title_widget (EPHY_HEADER_BAR (window->header_bar)));
+//  lentry = GTK_WIDGET (ephy_header_bar_get_title_widget (EPHY_HEADER_BAR (window->header_bar)));
 
-  if (EPHY_IS_LOCATION_ENTRY (lentry))
-    ephy_location_entry_set_bookmark_icon_state (EPHY_LOCATION_ENTRY (lentry), state);
+//  if (EPHY_IS_LOCATION_ENTRY (lentry))
+//    ephy_location_entry_set_bookmark_icon_state (EPHY_LOCATION_ENTRY (lentry), state);
 }
 
 static void
@@ -1228,8 +1237,8 @@ sync_tab_bookmarked_status (EphyWebView *view,
 
   widget = GTK_WIDGET (ephy_header_bar_get_title_widget (EPHY_HEADER_BAR (window->header_bar)));
 
-  if (!EPHY_IS_LOCATION_ENTRY (widget))
-    return;
+//  if (!EPHY_IS_LOCATION_ENTRY (widget))
+//    return;
 
   address = ephy_web_view_get_address (view);
   mode = ephy_embed_shell_get_mode (shell);
@@ -1246,7 +1255,7 @@ sync_tab_bookmarked_status (EphyWebView *view,
   }
 
   ephy_action_bar_end_set_bookmark_icon_state (EPHY_ACTION_BAR_END (action_bar_end), state);
-  ephy_location_entry_set_bookmark_icon_state (EPHY_LOCATION_ENTRY (widget), state);
+//  ephy_location_entry_set_bookmark_icon_state (EPHY_LOCATION_ENTRY (widget), state);
 }
 
 static void
@@ -1524,12 +1533,9 @@ populate_context_menu (WebKitWebView       *web_view,
                               EPHY_PREFS_LOCKDOWN_CONTEXT_MENU))
     return GDK_EVENT_STOP;
 
-  window_action_group = gtk_widget_get_action_group (GTK_WIDGET (window),
-                                                     "win");
-  toolbar_action_group = gtk_widget_get_action_group (GTK_WIDGET (window),
-                                                      "toolbar");
-  popup_action_group = gtk_widget_get_action_group (GTK_WIDGET (window),
-                                                    "popup");
+  window_action_group = ephy_window_get_action_group (window, "win");
+  toolbar_action_group = ephy_window_get_action_group (window, "toolbar");
+  popup_action_group = ephy_window_get_action_group (window, "popup");
 
   if (webkit_hit_test_result_context_is_image (hit_test_result)) {
     is_image = TRUE;
@@ -1895,11 +1901,11 @@ window_properties_geometry_changed (WebKitWindowProperties *properties,
   GdkRectangle geometry;
 
   webkit_window_properties_get_geometry (properties, &geometry);
-  if (geometry.x >= 0 && geometry.y >= 0)
-    gtk_window_move (GTK_WINDOW (window), geometry.x, geometry.y);
+//  if (geometry.x >= 0 && geometry.y >= 0)
+//    gtk_window_move (GTK_WINDOW (window), geometry.x, geometry.y);
 
-  if (geometry.width > 0 && geometry.height > 0)
-    gtk_window_resize (GTK_WINDOW (window), geometry.width, geometry.height);
+//  if (geometry.width > 0 && geometry.height > 0)
+//    gtk_window_resize (GTK_WINDOW (window), geometry.width, geometry.height);
 }
 
 static void
@@ -1921,7 +1927,7 @@ ephy_window_configure_for_view (EphyWindow    *window,
 
     title_widget = GTK_WIDGET (ephy_header_bar_get_title_widget (EPHY_HEADER_BAR (window->header_bar)));
     lentry = EPHY_LOCATION_ENTRY (title_widget);
-    gtk_editable_set_editable (GTK_EDITABLE (ephy_location_entry_get_entry (lentry)), FALSE);
+    gtk_editable_set_editable (GTK_EDITABLE (lentry), FALSE);
 
     if (webkit_window_properties_get_menubar_visible (properties))
       chrome |= EPHY_WINDOW_CHROME_MENU;
@@ -1950,8 +1956,8 @@ web_view_ready_cb (WebKitWebView *web_view,
   EphyWindow *window, *parent_view_window;
   gboolean using_new_window;
 
-  window = EPHY_WINDOW (gtk_widget_get_toplevel (GTK_WIDGET (web_view)));
-  parent_view_window = EPHY_WINDOW (gtk_widget_get_toplevel (GTK_WIDGET (parent_web_view)));
+  window = EPHY_WINDOW (gtk_widget_get_root (GTK_WIDGET (web_view)));
+  parent_view_window = EPHY_WINDOW (gtk_widget_get_root (GTK_WIDGET (parent_web_view)));
 
   using_new_window = window != parent_view_window;
 
@@ -2101,12 +2107,7 @@ decide_navigation_policy (WebKitWebView            *web_view,
   uri = webkit_uri_request_get_uri (request);
 
   if (!ephy_embed_utils_address_has_web_scheme (uri) && webkit_navigation_action_is_user_gesture (navigation_action)) {
-    g_autoptr (GError) error = NULL;
-    gtk_show_uri_on_window (GTK_WINDOW (window), uri, GDK_CURRENT_TIME, &error);
-    if (error) {
-      LOG ("failed to handle non-web scheme: %s", error->message);
-      return accept_navigation_policy_decision (window, decision, uri);
-    }
+    gtk_show_uri (GTK_WINDOW (window), uri, GDK_CURRENT_TIME);
 
     webkit_policy_decision_ignore (decision);
     return TRUE;
@@ -2130,11 +2131,11 @@ decide_navigation_policy (WebKitWebView            *web_view,
          * executes in web app mode.
          */
         ephy_file_open_uri_in_default_browser (uri, GDK_CURRENT_TIME,
-                                               gtk_window_get_screen (GTK_WINDOW (window)),
+                                               gdk_surface_get_display (gtk_native_get_surface (GTK_NATIVE (window))),
                                                EPHY_FILE_HELPERS_I_UNDERSTAND_I_MUST_NOT_USE_THIS_FUNCTION_UNDER_FLATPAK);
         webkit_policy_decision_ignore (decision);
 
-        gtk_widget_destroy (GTK_WIDGET (window));
+        gtk_window_destroy (GTK_WINDOW (window));
 
         return TRUE;
       }
@@ -2149,7 +2150,7 @@ decide_navigation_policy (WebKitWebView            *web_view,
        * executes in web app mode.
        */
       ephy_file_open_uri_in_default_browser (uri, GDK_CURRENT_TIME,
-                                             gtk_window_get_screen (GTK_WINDOW (window)),
+                                             gdk_surface_get_display (gtk_native_get_surface (GTK_NATIVE (window))),
                                              EPHY_FILE_HELPERS_I_UNDERSTAND_I_MUST_NOT_USE_THIS_FUNCTION_UNDER_FLATPAK);
       webkit_policy_decision_ignore (decision);
 
@@ -2190,7 +2191,7 @@ decide_navigation_policy (WebKitWebView            *web_view,
       inherit_session = TRUE;
     }
     /* Alt+click means download URI */
-    else if (button == GDK_BUTTON_PRIMARY && state == GDK_MOD1_MASK) {
+    else if (button == GDK_BUTTON_PRIMARY && state == GDK_ALT_MASK) {
       if (save_target_uri (window, web_view)) {
         webkit_policy_decision_ignore (decision);
         return TRUE;
@@ -2458,9 +2459,9 @@ ephy_window_connect_active_embed (EphyWindow *window)
   g_signal_connect_object (view, "notify::is-blank",
                            G_CALLBACK (sync_tab_is_blank),
                            window, 0);
-  g_signal_connect_object (view, "context-menu",
-                           G_CALLBACK (populate_context_menu),
-                           window, 0);
+//  g_signal_connect_object (view, "context-menu",
+//                           G_CALLBACK (populate_context_menu),
+//                           window, 0);
   g_signal_connect_object (view, "mouse-target-changed",
                            G_CALLBACK (ephy_window_mouse_target_changed_cb),
                            window, 0);
@@ -2468,7 +2469,7 @@ ephy_window_connect_active_embed (EphyWindow *window)
                            G_CALLBACK (web_process_terminated_cb),
                            window, 0);
 
-  ephy_mouse_gesture_controller_set_web_view (window->mouse_gesture_controller, web_view);
+//  ephy_mouse_gesture_controller_set_web_view (window->mouse_gesture_controller, web_view);
 
   g_object_notify (G_OBJECT (window), "active-child");
 }
@@ -2488,7 +2489,7 @@ ephy_window_disconnect_active_embed (EphyWindow *window)
 
   ephy_embed_detach_notification_container (window->active_embed);
 
-  ephy_mouse_gesture_controller_unset_web_view (window->mouse_gesture_controller);
+//  ephy_mouse_gesture_controller_unset_web_view (window->mouse_gesture_controller);
 
   g_signal_handlers_disconnect_by_func (web_view,
                                         G_CALLBACK (progress_update),
@@ -2523,9 +2524,9 @@ ephy_window_disconnect_active_embed (EphyWindow *window)
   g_signal_handlers_disconnect_by_func (view,
                                         G_CALLBACK (sync_tab_address),
                                         window);
-  g_signal_handlers_disconnect_by_func (view,
-                                        G_CALLBACK (populate_context_menu),
-                                        window);
+//  g_signal_handlers_disconnect_by_func (view,
+//                                        G_CALLBACK (populate_context_menu),
+//                                        window);
   g_signal_handlers_disconnect_by_func (view,
                                         G_CALLBACK (ephy_window_mouse_target_changed_cb),
                                         window);
@@ -2541,7 +2542,7 @@ ephy_window_set_active_tab (EphyWindow *window,
   EphyEmbed *old_embed;
 
   g_assert (EPHY_IS_WINDOW (window));
-  g_assert (gtk_widget_get_toplevel (GTK_WIDGET (new_embed)) == GTK_WIDGET (window));
+  g_assert (gtk_widget_get_root (GTK_WIDGET (new_embed)) == GTK_ROOT (window));
 
   old_embed = window->active_embed;
 
@@ -2558,8 +2559,8 @@ ephy_window_set_active_tab (EphyWindow *window,
 }
 
 static void
-tab_view_setup_menu_cb (HdyTabView *tab_view,
-                        HdyTabPage *page,
+tab_view_setup_menu_cb (AdwTabView *tab_view,
+                        AdwTabPage *page,
                         EphyWindow *window)
 {
   EphyWebView *view;
@@ -2573,17 +2574,17 @@ tab_view_setup_menu_cb (HdyTabView *tab_view,
   gboolean muted;
 
   if (page) {
-    n_pages = hdy_tab_view_get_n_pages (tab_view);
-    n_pinned_pages = hdy_tab_view_get_n_pinned_pages (tab_view);
-    position = hdy_tab_view_get_page_position (tab_view, page);
-    pinned = hdy_tab_page_get_pinned (page);
+    n_pages = adw_tab_view_get_n_pages (tab_view);
+    n_pinned_pages = adw_tab_view_get_n_pinned_pages (tab_view);
+    position = adw_tab_view_get_page_position (tab_view, page);
+    pinned = adw_tab_page_get_pinned (page);
 
-    view = ephy_embed_get_web_view (EPHY_EMBED (hdy_tab_page_get_child (page)));
+    view = ephy_embed_get_web_view (EPHY_EMBED (adw_tab_page_get_child (page)));
     audio_playing = webkit_web_view_is_playing_audio (WEBKIT_WEB_VIEW (view));
     muted = webkit_web_view_get_is_muted (WEBKIT_WEB_VIEW (view));
   }
 
-  action_group = gtk_widget_get_action_group (GTK_WIDGET (window), "tab");
+  action_group = ephy_window_get_action_group (window, "tab");
 
   /* enable/disable close others/left/right */
   /* If there's no page, enable all actions so that we don't interfere with hotkeys */
@@ -2625,10 +2626,7 @@ tab_view_setup_menu_cb (HdyTabView *tab_view,
 static gboolean
 present_on_idle_cb (GtkWindow *window)
 {
-  EphyWindow *ephy_window = EPHY_WINDOW (window);
-
-  gtk_window_present_with_time (window, ephy_window->present_on_insert_user_time);
-  ephy_window->present_on_insert_user_time = 0;
+  gtk_window_present (window);
 
   return FALSE;
 }
@@ -2637,7 +2635,7 @@ static gboolean
 delayed_remove_child (gpointer data)
 {
   GtkWidget *widget = GTK_WIDGET (data);
-  EphyEmbedContainer *container = EPHY_EMBED_CONTAINER (gtk_widget_get_toplevel (widget));
+  EphyEmbedContainer *container = EPHY_EMBED_CONTAINER (gtk_widget_get_root (widget));
 
   ephy_embed_container_remove_child (container, EPHY_EMBED (widget));
 
@@ -2691,12 +2689,12 @@ reader_mode_cb (EphyWebView *view,
 }
 
 static void
-tab_view_page_attached_cb (HdyTabView *tab_view,
-                           HdyTabPage *page,
+tab_view_page_attached_cb (AdwTabView *tab_view,
+                           AdwTabPage *page,
                            gint        position,
                            EphyWindow *window)
 {
-  GtkWidget *content = hdy_tab_page_get_child (page);
+  GtkWidget *content = adw_tab_page_get_child (page);
   EphyEmbed *embed;
 
   g_assert (EPHY_IS_EMBED (content));
@@ -2718,12 +2716,12 @@ tab_view_page_attached_cb (HdyTabView *tab_view,
 }
 
 static void
-tab_view_page_detached_cb (HdyTabView *tab_view,
-                           HdyTabPage *page,
+tab_view_page_detached_cb (AdwTabView *tab_view,
+                           AdwTabPage *page,
                            gint        position,
                            EphyWindow *window)
 {
-  GtkWidget *content = hdy_tab_page_get_child (page);
+  GtkWidget *content = adw_tab_page_get_child (page);
 
   LOG ("page-detached tab view %p embed %p position %d\n", tab_view, content, position);
 
@@ -2786,19 +2784,19 @@ ephy_window_close_tab (EphyWindow *window,
    * tab, even if it wasn't at the start of this function.
    */
   if (!window->closing && ephy_tab_view_get_n_pages (window->tab_view) == 0)
-    gtk_widget_destroy (GTK_WIDGET (window));
+    gtk_window_destroy (GTK_WINDOW (window));
 }
 
 typedef struct {
   EphyWindow *window;
   EphyEmbed *embed;
-  HdyTabPage *page;
+  AdwTabPage *page;
 } TabHasModifiedFormsData;
 
 static TabHasModifiedFormsData *
 tab_has_modified_forms_data_new (EphyWindow *window,
                                  EphyEmbed  *embed,
-                                 HdyTabPage *page)
+                                 AdwTabPage *page)
 {
   TabHasModifiedFormsData *data = g_new (TabHasModifiedFormsData, 1);
   data->window = window;
@@ -2823,9 +2821,9 @@ tab_has_modified_forms_dialog_cb (GtkDialog               *dialog,
                                   GtkResponseType          response,
                                   TabHasModifiedFormsData *data)
 {
-  HdyTabView *tab_view = ephy_tab_view_get_tab_view (data->window->tab_view);
+  AdwTabView *tab_view = ephy_tab_view_get_tab_view (data->window->tab_view);
 
-  gtk_widget_destroy (GTK_WIDGET (dialog));
+  gtk_window_destroy (GTK_WINDOW (dialog));
 
   if (response == GTK_RESPONSE_ACCEPT) {
     /* It's safe to close the tab immediately because we are only checking a
@@ -2833,10 +2831,10 @@ tab_has_modified_forms_dialog_cb (GtkDialog               *dialog,
      * codepath for checking modified forms when closing the whole window,
      * see ephy_window_check_modified_forms().
      */
-    hdy_tab_view_close_page_finish (tab_view, data->page, TRUE);
+    adw_tab_view_close_page_finish (tab_view, data->page, TRUE);
     ephy_window_close_tab (data->window, data->embed);
   } else
-    hdy_tab_view_close_page_finish (tab_view, data->page, FALSE);
+    adw_tab_view_close_page_finish (tab_view, data->page, FALSE);
 
   tab_has_modified_forms_data_free (data);
 }
@@ -2853,10 +2851,10 @@ tab_has_modified_forms_cb (EphyWebView             *view,
   if (data->window != NULL &&
       data->embed != NULL &&
       data->page != NULL) {
-    HdyTabView *tab_view = ephy_tab_view_get_tab_view (data->window->tab_view);
+    AdwTabView *tab_view = ephy_tab_view_get_tab_view (data->window->tab_view);
 
     if (!has_modified_forms) {
-      hdy_tab_view_close_page_finish (tab_view, data->page, TRUE);
+      adw_tab_view_close_page_finish (tab_view, data->page, TRUE);
       ephy_window_close_tab (data->window, data->embed);
     } else {
       GtkWidget *dialog;
@@ -2900,19 +2898,19 @@ run_downloads_in_background (EphyWindow *window,
 }
 
 static gboolean
-tab_view_close_page_cb (HdyTabView *tab_view,
-                        HdyTabPage *page,
+tab_view_close_page_cb (AdwTabView *tab_view,
+                        AdwTabPage *page,
                         EphyWindow *window)
 {
-  EphyEmbed *embed = EPHY_EMBED (hdy_tab_page_get_child (page));
+  EphyEmbed *embed = EPHY_EMBED (adw_tab_page_get_child (page));
 
-  if (hdy_tab_page_get_pinned (page))
+  if (adw_tab_page_get_pinned (page))
     return GDK_EVENT_PROPAGATE;
 
   if (ephy_tab_view_get_n_pages (window->tab_view) == 1) {
     if (g_settings_get_boolean (EPHY_SETTINGS_LOCKDOWN,
                                 EPHY_PREFS_LOCKDOWN_QUIT)) {
-      hdy_tab_view_close_page_finish (tab_view, page, FALSE);
+      adw_tab_view_close_page_finish (tab_view, page, FALSE);
       return GDK_EVENT_STOP;
     }
 
@@ -2928,7 +2926,7 @@ tab_view_close_page_cb (HdyTabView *tab_view,
       if (ephy_downloads_manager_has_active_downloads (manager)) {
         GList *list = ephy_downloads_manager_get_downloads (manager);
         run_downloads_in_background (window, g_list_length (list));
-        hdy_tab_view_close_page_finish (tab_view, page, FALSE);
+        adw_tab_view_close_page_finish (tab_view, page, FALSE);
         return GDK_EVENT_STOP;
       }
     }
@@ -2957,8 +2955,8 @@ tab_view_close_page_cb (HdyTabView *tab_view,
   return GDK_EVENT_PROPAGATE;
 }
 
-static HdyTabView *
-tab_view_create_window_cb (HdyTabView *tab_view,
+static AdwTabView *
+tab_view_create_window_cb (AdwTabView *tab_view,
                            EphyWindow *window)
 {
   EphyWindow *new_window;
@@ -2966,7 +2964,6 @@ tab_view_create_window_cb (HdyTabView *tab_view,
   new_window = ephy_window_new ();
 
   new_window->present_on_insert = TRUE;
-  new_window->present_on_insert_user_time = gtk_get_current_event_time ();
 
   return ephy_tab_view_get_tab_view (new_window->tab_view);
 }
@@ -2986,10 +2983,9 @@ ephy_window_update_entry_focus (EphyWindow  *window,
     return;
 
   title_widget = GTK_WIDGET (ephy_header_bar_get_title_widget (EPHY_HEADER_BAR (window->header_bar)));
-  if (EPHY_IS_LOCATION_ENTRY (title_widget)) {
-    entry = ephy_location_entry_get_entry (EPHY_LOCATION_ENTRY (title_widget));
-    gtk_entry_grab_focus_without_selecting (GTK_ENTRY (entry));
-  }
+
+  if (EPHY_IS_LOCATION_ENTRY (title_widget))
+    ephy_location_bar_grab_focus_without_selecting (EPHY_LOCATION_ENTRY (title_widget));
 }
 
 static void
@@ -3030,15 +3026,14 @@ static EphyTabView *
 setup_tab_view (EphyWindow *window)
 {
   EphyTabView *tab_view = ephy_tab_view_new ();
-  HdyTabView *view = ephy_tab_view_get_tab_view (tab_view);
+  AdwTabView *view = ephy_tab_view_get_tab_view (tab_view);
   g_autoptr (GtkBuilder) builder = NULL;
 
   gtk_widget_set_vexpand (GTK_WIDGET (tab_view), TRUE);
 
   builder = gtk_builder_new_from_resource ("/org/gnome/epiphany/gtk/notebook-context-menu.ui");
 
-  hdy_tab_view_set_menu_model (view, G_MENU_MODEL (gtk_builder_get_object (builder, "notebook-menu")));
-  hdy_tab_view_set_shortcut_widget (view, GTK_WIDGET (window));
+  adw_tab_view_set_menu_model (view, G_MENU_MODEL (gtk_builder_get_object (builder, "notebook-menu")));
 
   g_signal_connect_object (view, "notify::selected-page",
                            G_CALLBACK (tab_view_notify_selected_page_cb),
@@ -3145,15 +3140,13 @@ ephy_window_get_property (GObject    *object,
     case PROP_SINGLE_TAB_MODE:
       g_value_set_boolean (value, window->is_popup);
       break;
-    case PROP_FULLSCREEN:
-      g_value_set_boolean (value, window->is_fullscreen);
-      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
   }
 }
 
+#if 0
 static gboolean
 ephy_window_state_event (GtkWidget           *widget,
                          GdkEventWindowState *event)
@@ -3161,32 +3154,8 @@ ephy_window_state_event (GtkWidget           *widget,
   EphyWindow *window = EPHY_WINDOW (widget);
   gboolean result = GDK_EVENT_PROPAGATE;
 
-  if (event->changed_mask & GDK_WINDOW_STATE_FULLSCREEN) {
-    GActionGroup *action_group;
-    GAction *action;
-    gboolean fullscreen;
-
-    fullscreen = !!(event->new_window_state & GDK_WINDOW_STATE_FULLSCREEN);
-
-    if (fullscreen) {
-      ephy_window_fullscreen (window);
-    } else {
-      ephy_window_unfullscreen (window);
-    }
-
-    ephy_fullscreen_box_set_fullscreen (window->fullscreen_box, fullscreen && window->show_fullscreen_header_bar);
-    gtk_widget_set_visible (GTK_WIDGET (window->titlebar_box), !fullscreen || window->show_fullscreen_header_bar);
-
-    window->show_fullscreen_header_bar = FALSE;
-
-    action_group = gtk_widget_get_action_group (GTK_WIDGET (window), "win");
-    action = g_action_map_lookup_action (G_ACTION_MAP (action_group), "fullscreen");
-
-    g_simple_action_set_state (G_SIMPLE_ACTION (action),
-                               g_variant_new_boolean (fullscreen));
-  } else if (event->changed_mask & GDK_WINDOW_STATE_MAXIMIZED) {
+  if (event->changed_mask & GDK_WINDOW_STATE_MAXIMIZED)
     window->is_maximized = !!(event->new_window_state & GDK_WINDOW_STATE_MAXIMIZED);
-  }
 
   update_adaptive_mode (window);
 
@@ -3195,6 +3164,7 @@ ephy_window_state_event (GtkWidget           *widget,
 
   return result;
 }
+#endif
 
 void
 ephy_window_set_default_size (EphyWindow *window,
@@ -3210,8 +3180,6 @@ ephy_window_set_default_position (EphyWindow *window,
                                   gint        x,
                                   gint        y)
 {
-  gtk_window_move (GTK_WINDOW (window), x, y);
-  window->has_default_position = TRUE;
 }
 
 static void
@@ -3228,20 +3196,6 @@ ephy_window_show (GtkWidget *widget)
   if (window->is_maximized)
     gtk_window_maximize (GTK_WINDOW (window));
   else {
-    if (!window->has_default_position) {
-      g_settings_get (EPHY_SETTINGS_STATE,
-                      "window-position", "(ii)",
-                      &window->current_x,
-                      &window->current_y);
-      if (window->current_x >= 0 && window->current_y >= 0) {
-        gtk_window_move (GTK_WINDOW (window),
-                         window->current_x,
-                         window->current_y);
-      }
-
-      window->has_default_position = TRUE;
-    }
-
     if (!window->has_default_size) {
       g_settings_get (EPHY_SETTINGS_STATE,
                       "window-size", "(ii)",
@@ -3249,9 +3203,9 @@ ephy_window_show (GtkWidget *widget)
                       &window->current_height);
 
       if (window->current_width > 0 && window->current_height > 0) {
-        gtk_window_resize (GTK_WINDOW (window),
-                           window->current_width,
-                           window->current_height);
+        gtk_window_set_default_size (GTK_WINDOW (window),
+                                     window->current_width,
+                                     window->current_height);
       }
 
       window->has_default_size = TRUE;
@@ -3263,6 +3217,7 @@ ephy_window_show (GtkWidget *widget)
   GTK_WIDGET_CLASS (ephy_window_parent_class)->show (widget);
 }
 
+#if 0
 static gboolean
 ephy_window_should_save_state (EphyWindow *window)
 {
@@ -3294,11 +3249,16 @@ ephy_window_destroy (GtkWidget *widget)
 
   GTK_WIDGET_CLASS (ephy_window_parent_class)->destroy (widget);
 }
+#endif
 
 static void
 ephy_window_finalize (GObject *object)
 {
+  EphyWindow *window = EPHY_WINDOW (object);
+
   G_OBJECT_CLASS (ephy_window_parent_class)->finalize (object);
+
+  g_hash_table_unref (window->action_groups);
 
   LOG ("EphyWindow finalised %p", object);
 }
@@ -3326,6 +3286,7 @@ sync_user_input_cb (EphyLocationController *action,
   window->updating_address = FALSE;
 }
 
+#if 0
 static void
 security_popover_notify_visible_cb (GtkWidget  *widget,
                                     GParamSpec *param,
@@ -3363,6 +3324,7 @@ title_widget_lock_clicked_cb (EphyTitleWidget *title_widget,
   gtk_popover_set_position (GTK_POPOVER (security_popover), GTK_POS_BOTTOM);
   gtk_popover_popup (GTK_POPOVER (security_popover));
 }
+#endif
 
 static GtkWidget *
 setup_header_bar (EphyWindow *window)
@@ -3370,19 +3332,11 @@ setup_header_bar (EphyWindow *window)
   GtkWidget *header_bar;
   EphyTitleWidget *title_widget;
 
-  window->window_handle = hdy_window_handle_new ();
   header_bar = ephy_header_bar_new (window);
 
-  gtk_container_add (GTK_CONTAINER (window->window_handle), header_bar);
-
-  gtk_widget_show (window->window_handle);
-  gtk_widget_show (header_bar);
-
-  gtk_style_context_add_class (gtk_widget_get_style_context (header_bar), "titlebar");
-
-  title_widget = ephy_header_bar_get_title_widget (EPHY_HEADER_BAR (header_bar));
-  g_signal_connect (title_widget, "lock-clicked",
-                    G_CALLBACK (title_widget_lock_clicked_cb), window);
+//  title_widget = ephy_header_bar_get_title_widget (EPHY_HEADER_BAR (header_bar));
+//  g_signal_connect (title_widget, "lock-clicked",
+//                    G_CALLBACK (title_widget_lock_clicked_cb), window);
 
   return header_bar;
 }
@@ -3391,7 +3345,7 @@ static void
 update_pages_menu_revealer (EphyWindow *window)
 {
   gtk_revealer_set_reveal_child (window->pages_menu_revealer,
-                                 hdy_tab_bar_get_is_overflowing (window->tab_bar) ||
+                                 adw_tab_bar_get_is_overflowing (window->tab_bar) ||
                                  gtk_widget_get_visible (GTK_WIDGET (window->pages_popover)));
 }
 
@@ -3405,17 +3359,17 @@ setup_tabs_menu (EphyWindow *window)
   revealer = GTK_REVEALER (gtk_revealer_new ());
   gtk_revealer_set_transition_type (revealer,
                                     GTK_REVEALER_TRANSITION_TYPE_SLIDE_LEFT);
-  hdy_tab_bar_set_end_action_widget (window->tab_bar, GTK_WIDGET (revealer));
+  adw_tab_bar_set_end_action_widget (window->tab_bar, GTK_WIDGET (revealer));
   window->pages_menu_revealer = revealer;
 
   menu_button = gtk_menu_button_new ();
-  gtk_button_set_relief (GTK_BUTTON (menu_button), GTK_RELIEF_NONE);
+  gtk_widget_add_css_class (menu_button, "flat");
   /* Translators: tooltip for the tab switcher menu button */
   gtk_widget_set_tooltip_text (menu_button, _("View open tabs"));
   gtk_widget_set_margin_start (menu_button, 1);
-  gtk_container_add (GTK_CONTAINER (revealer), menu_button);
+  gtk_revealer_set_child (revealer, menu_button);
 
-  popover = ephy_pages_popover_new (menu_button);
+  popover = ephy_pages_popover_new ();
   ephy_pages_popover_set_tab_view (popover, window->tab_view);
   gtk_menu_button_set_popover (GTK_MENU_BUTTON (menu_button),
                                GTK_WIDGET (popover));
@@ -3427,8 +3381,6 @@ setup_tabs_menu (EphyWindow *window)
   g_signal_connect_object (window->pages_popover, "notify::visible",
                            G_CALLBACK (update_pages_menu_revealer), window,
                            G_CONNECT_SWAPPED);
-
-  gtk_widget_show_all (GTK_WIDGET (revealer));
 }
 
 static EphyLocationController *
@@ -3456,7 +3408,6 @@ setup_action_bar (EphyWindow *window)
   GtkWidget *action_bar;
 
   action_bar = GTK_WIDGET (ephy_action_bar_new (window));
-  gtk_widget_show (action_bar);
 
   g_object_bind_property (window->fullscreen_box, "revealed",
                           action_bar, "can-reveal",
@@ -3520,6 +3471,7 @@ set_as_default_browser ()
   }
 }
 
+#if 0
 static void
 on_default_browser_question_response (GtkInfoBar *info_bar,
                                       gint        response_id,
@@ -3561,9 +3513,8 @@ add_default_browser_question (GtkBox *box)
   g_signal_connect (info_bar, "response", G_CALLBACK (on_default_browser_question_response), NULL);
 
   gtk_box_pack_start (box, info_bar, FALSE, TRUE, 0);
-
-  gtk_widget_show (info_bar);
 }
+#endif
 
 static gboolean
 is_browser_default (void)
@@ -3599,14 +3550,14 @@ download_completed_cb (EphyDownload *download,
 }
 
 static void
-notify_deck_child_cb (EphyWindow *window)
+notify_leaflet_child_cb (EphyWindow *window)
 {
   GActionGroup *action_group;
   GAction *action;
   gboolean pages_open;
 
-  pages_open = hdy_deck_get_visible_child (HDY_DECK (window->main_deck)) == GTK_WIDGET (window->pages_view);
-  action_group = gtk_widget_get_action_group (GTK_WIDGET (window), "win");
+  pages_open = adw_leaflet_get_visible_child (ADW_LEAFLET (window->main_leaflet)) == GTK_WIDGET (window->pages_view);
+  action_group = ephy_window_get_action_group (window, "win");
 
   action = g_action_map_lookup_action (G_ACTION_MAP (action_group), "content");
   g_simple_action_set_enabled (G_SIMPLE_ACTION (action), pages_open);
@@ -3616,17 +3567,31 @@ notify_deck_child_cb (EphyWindow *window)
 }
 
 static void
-ephy_window_size_allocate (GtkWidget     *widget,
-                           GtkAllocation *allocation)
+ephy_window_size_allocate (GtkWidget *widget,
+                           int        width,
+                           int        height,
+                           int        baseline)
 {
   EphyWindow *window = EPHY_WINDOW (widget);
 
-  GTK_WIDGET_CLASS (ephy_window_parent_class)->size_allocate (widget, allocation);
+  GTK_WIDGET_CLASS (ephy_window_parent_class)->size_allocate (widget, width,
+                                                              height, baseline);
 
-  if (!(window->is_maximized || window->is_fullscreen))
-    gtk_window_get_size (GTK_WINDOW (widget), &window->current_width, &window->current_height);
+  if (!(window->is_maximized || window->is_fullscreen)) {
+    window->current_width = width;
+    window->current_height = height;
+  }
 
   update_adaptive_mode (window);
+}
+
+static void
+insert_action_group (const char   *prefix,
+                     GActionGroup *group,
+                     GtkWidget    *widget)
+{
+  gtk_widget_insert_action_group (widget, prefix, group);
+
 }
 
 static void
@@ -3647,41 +3612,42 @@ ephy_window_constructed (GObject *object)
 
   window = EPHY_WINDOW (object);
 
+  window->action_groups = g_hash_table_new_full (g_str_hash,
+                                                 g_str_equal,
+                                                 g_free,
+                                                 NULL);
+
   /* Add actions */
   simple_action_group = g_simple_action_group_new ();
   g_action_map_add_action_entries (G_ACTION_MAP (simple_action_group),
                                    window_entries,
                                    G_N_ELEMENTS (window_entries),
                                    window);
-  gtk_widget_insert_action_group (GTK_WIDGET (window),
-                                  "win",
-                                  G_ACTION_GROUP (simple_action_group));
+  g_hash_table_insert (window->action_groups, g_strdup ("win"), simple_action_group);
 
   simple_action_group = g_simple_action_group_new ();
   g_action_map_add_action_entries (G_ACTION_MAP (simple_action_group),
                                    tab_entries,
                                    G_N_ELEMENTS (tab_entries),
                                    window);
-  gtk_widget_insert_action_group (GTK_WIDGET (window), "tab",
-                                  G_ACTION_GROUP (simple_action_group));
+  g_hash_table_insert (window->action_groups, g_strdup ("tab"), simple_action_group);
 
   simple_action_group = g_simple_action_group_new ();
   g_action_map_add_action_entries (G_ACTION_MAP (simple_action_group),
                                    toolbar_entries,
                                    G_N_ELEMENTS (toolbar_entries),
                                    window);
-  gtk_widget_insert_action_group (GTK_WIDGET (window),
-                                  "toolbar",
-                                  G_ACTION_GROUP (simple_action_group));
+  g_hash_table_insert (window->action_groups, g_strdup ("toolbar"), simple_action_group);
 
   simple_action_group = g_simple_action_group_new ();
   g_action_map_add_action_entries (G_ACTION_MAP (simple_action_group),
                                    popup_entries,
                                    G_N_ELEMENTS (popup_entries),
                                    window);
-  gtk_widget_insert_action_group (GTK_WIDGET (window),
-                                  "popup",
-                                  G_ACTION_GROUP (simple_action_group));
+  g_hash_table_insert (window->action_groups, g_strdup ("popup"), simple_action_group);
+
+  g_hash_table_foreach (window->action_groups,
+                        (GHFunc) insert_action_group, window);
 
   window->action_labels = g_hash_table_new_full (g_str_hash,
                                                  g_str_equal,
@@ -3710,20 +3676,24 @@ ephy_window_constructed (GObject *object)
                                            accels_navigation_ltr_rtl[i].accelerators);
   }
 
+  g_signal_connect (window, "notify::fullscreened",
+                    G_CALLBACK (notify_fullscreen_cb), NULL);
+
   ephy_gui_ensure_window_group (GTK_WINDOW (window));
 
   window->tab_view = setup_tab_view (window);
-  window->tab_bar = hdy_tab_bar_new ();
+  window->tab_bar = adw_tab_bar_new ();
   window->tab_bar_revealer = GTK_REVEALER (gtk_revealer_new ());
-  window->main_deck = hdy_deck_new ();
+  window->main_leaflet = adw_leaflet_new ();
   window->fullscreen_box = ephy_fullscreen_box_new ();
   window->pages_view = ephy_pages_view_new ();
 
-  g_signal_connect_swapped (window->main_deck, "notify::visible-child",
-                            G_CALLBACK (notify_deck_child_cb), window);
+  adw_leaflet_set_can_unfold (ADW_LEAFLET (window->main_leaflet), FALSE);
+  g_signal_connect_swapped (window->main_leaflet, "notify::visible-child",
+                            G_CALLBACK (notify_leaflet_child_cb), window);
 
   gtk_revealer_set_transition_type (window->tab_bar_revealer, GTK_REVEALER_TRANSITION_TYPE_SLIDE_DOWN);
-  hdy_tab_bar_set_view (window->tab_bar, ephy_tab_view_get_tab_view (window->tab_view));
+  adw_tab_bar_set_view (window->tab_bar, ephy_tab_view_get_tab_view (window->tab_view));
   ephy_pages_view_set_tab_view (window->pages_view, window->tab_view);
 
   setup_tabs_menu (window);
@@ -3744,38 +3714,30 @@ ephy_window_constructed (GObject *object)
   box = GTK_BOX (gtk_box_new (GTK_ORIENTATION_VERTICAL, 0));
   window->titlebar_box = GTK_BOX (gtk_box_new (GTK_ORIENTATION_VERTICAL, 0));
 
-  if (g_settings_get_boolean (EPHY_SETTINGS_MAIN, EPHY_PREFS_ASK_FOR_DEFAULT) &&
-      !is_browser_default () &&
-      !ephy_profile_dir_is_web_application ())
-    add_default_browser_question (box);
+//  if (g_settings_get_boolean (EPHY_SETTINGS_MAIN, EPHY_PREFS_ASK_FOR_DEFAULT) &&
+//      !is_browser_default () &&
+//      !ephy_profile_dir_is_web_application ())
+//    add_default_browser_question (box);
 
-  gtk_container_add (GTK_CONTAINER (window->tab_bar_revealer), GTK_WIDGET (window->tab_bar));
-  gtk_box_pack_start (window->titlebar_box, GTK_WIDGET (window->window_handle), FALSE, TRUE, 0);
-  gtk_box_pack_start (window->titlebar_box, GTK_WIDGET (window->tab_bar_revealer), FALSE, TRUE, 0);
-  gtk_box_pack_start (box, GTK_WIDGET (window->tab_view), FALSE, TRUE, 0);
-  gtk_box_pack_start (box, GTK_WIDGET (window->action_bar), FALSE, TRUE, 0);
+  gtk_revealer_set_child (window->tab_bar_revealer, GTK_WIDGET (window->tab_bar));
+  gtk_box_append (window->titlebar_box, GTK_WIDGET (window->header_bar));
+  gtk_box_append (window->titlebar_box, GTK_WIDGET (window->tab_bar_revealer));
+  gtk_box_append (box, GTK_WIDGET (window->tab_view));
+  gtk_box_append (box, GTK_WIDGET (window->action_bar));
   ephy_fullscreen_box_set_content (window->fullscreen_box, GTK_WIDGET (box));
   ephy_fullscreen_box_set_titlebar (window->fullscreen_box, GTK_WIDGET (window->titlebar_box));
 
-  gtk_container_add (GTK_CONTAINER (window->main_deck), GTK_WIDGET (window->fullscreen_box));
-  gtk_container_add (GTK_CONTAINER (window->main_deck), GTK_WIDGET (window->pages_view));
-  gtk_container_add (GTK_CONTAINER (window), GTK_WIDGET (window->main_deck));
-  gtk_widget_show (GTK_WIDGET (window->main_deck));
-  gtk_widget_show (GTK_WIDGET (window->pages_view));
-  gtk_widget_show (GTK_WIDGET (window->fullscreen_box));
-  gtk_widget_show (GTK_WIDGET (window->titlebar_box));
-  gtk_widget_show (GTK_WIDGET (box));
-  gtk_widget_show (GTK_WIDGET (window->tab_view));
-  gtk_widget_show (GTK_WIDGET (window->tab_bar));
-  gtk_widget_show (GTK_WIDGET (window->tab_bar_revealer));
+  adw_leaflet_append (ADW_LEAFLET (window->main_leaflet), GTK_WIDGET (window->fullscreen_box));
+  adw_leaflet_append (ADW_LEAFLET (window->main_leaflet), GTK_WIDGET (window->pages_view));
+  adw_application_window_set_content (ADW_APPLICATION_WINDOW (window), GTK_WIDGET (window->main_leaflet));
 
   ephy_tab_view_set_tab_bar (window->tab_view, window->tab_bar);
 
-  hdy_deck_set_visible_child (HDY_DECK (window->main_deck), GTK_WIDGET (window->fullscreen_box));
-  hdy_deck_set_can_swipe_back (HDY_DECK (window->main_deck), TRUE);
+  adw_leaflet_set_visible_child (ADW_LEAFLET (window->main_leaflet), GTK_WIDGET (window->fullscreen_box));
+  adw_leaflet_set_can_navigate_back (ADW_LEAFLET (window->main_leaflet), TRUE);
 
   /* other notifiers */
-  action_group = gtk_widget_get_action_group (GTK_WIDGET (window), "win");
+  action_group = ephy_window_get_action_group (window, "win");
   action = g_action_map_lookup_action (G_ACTION_MAP (action_group),
                                        "browse-with-caret");
 
@@ -3787,8 +3749,7 @@ ephy_window_constructed (GObject *object)
                                 NULL,
                                 action, NULL);
 
-  action_group = gtk_widget_get_action_group (GTK_WIDGET (window),
-                                              "win");
+  action_group = ephy_window_get_action_group (window, "win");
 
   /* Disable actions not needed for popup mode. */
   action = g_action_map_lookup_action (G_ACTION_MAP (action_group), "new-tab");
@@ -3796,7 +3757,7 @@ ephy_window_constructed (GObject *object)
                                         SENS_FLAG_CHROME,
                                         window->is_popup);
 
-  action_group = gtk_widget_get_action_group (GTK_WIDGET (window), "popup");
+  action_group = ephy_window_get_action_group (window, "popup");
   action = g_action_map_lookup_action (G_ACTION_MAP (action_group),
                                        "open-link-in-new-tab");
   ephy_action_change_sensitivity_flags (G_SIMPLE_ACTION (action),
@@ -3807,11 +3768,11 @@ ephy_window_constructed (GObject *object)
   if (mode == EPHY_EMBED_SHELL_MODE_APPLICATION) {
     g_object_set (window->location_controller, "editable", FALSE, NULL);
 
-    action_group = gtk_widget_get_action_group (GTK_WIDGET (window), "popup");
+    action_group = ephy_window_get_action_group (window, "popup");
     action = g_action_map_lookup_action (G_ACTION_MAP (action_group), "context-bookmark-page");
     ephy_action_change_sensitivity_flags (G_SIMPLE_ACTION (action), SENS_FLAG_CHROME, TRUE);
 
-    action_group = gtk_widget_get_action_group (GTK_WIDGET (window), "win");
+    action_group = ephy_window_get_action_group (window, "win");
     for (i = 0; i < G_N_ELEMENTS (disabled_actions_for_app_mode); i++) {
       action = g_action_map_lookup_action (G_ACTION_MAP (action_group),
                                            disabled_actions_for_app_mode[i]);
@@ -3820,12 +3781,12 @@ ephy_window_constructed (GObject *object)
     }
     chrome &= ~(EPHY_WINDOW_CHROME_LOCATION | EPHY_WINDOW_CHROME_TABSBAR | EPHY_WINDOW_CHROME_BOOKMARKS);
   } else if (mode == EPHY_EMBED_SHELL_MODE_INCOGNITO) {
-    action_group = gtk_widget_get_action_group (GTK_WIDGET (window), "win");
+    action_group = ephy_window_get_action_group (window, "win");
     action = g_action_map_lookup_action (G_ACTION_MAP (action_group), "bookmark-page");
     ephy_action_change_sensitivity_flags (G_SIMPLE_ACTION (action),
                                           SENS_FLAG_CHROME, TRUE);
 
-    action_group = gtk_widget_get_action_group (GTK_WIDGET (window), "popup");
+    action_group = ephy_window_get_action_group (window, "popup");
     action = g_action_map_lookup_action (G_ACTION_MAP (action_group), "context-bookmark-page");
     ephy_action_change_sensitivity_flags (G_SIMPLE_ACTION (action),
                                           SENS_FLAG_CHROME, TRUE);
@@ -3833,7 +3794,7 @@ ephy_window_constructed (GObject *object)
     g_object_set (window->location_controller, "editable", FALSE, NULL);
   }
 
-  window->mouse_gesture_controller = ephy_mouse_gesture_controller_new (window);
+//  window->mouse_gesture_controller = ephy_mouse_gesture_controller_new (window);
 
   ephy_window_set_chrome (window, chrome);
 
@@ -3853,11 +3814,11 @@ ephy_window_class_init (EphyWindowClass *klass)
   object_class->get_property = ephy_window_get_property;
   object_class->set_property = ephy_window_set_property;
 
-  widget_class->key_press_event = ephy_window_key_press_event;
-  widget_class->window_state_event = ephy_window_state_event;
+//  widget_class->key_press_event = ephy_window_key_press_event;
+//  widget_class->window_state_event = ephy_window_state_event;
   widget_class->show = ephy_window_show;
-  widget_class->destroy = ephy_window_destroy;
-  widget_class->delete_event = ephy_window_delete_event;
+//  widget_class->destroy = ephy_window_destroy;
+//  widget_class->delete_event = ephy_window_delete_event;
   widget_class->size_allocate = ephy_window_size_allocate;
 
   g_object_class_override_property (object_class,
@@ -3877,15 +3838,6 @@ ephy_window_class_init (EphyWindowClass *klass)
                                                        EPHY_WINDOW_CHROME_DEFAULT,
                                                        G_PARAM_READWRITE |
                                                        G_PARAM_STATIC_STRINGS));
-
-  g_object_class_install_property (object_class,
-                                   PROP_FULLSCREEN,
-                                   g_param_spec_boolean ("fullscreen",
-                                                         NULL,
-                                                         NULL,
-                                                         FALSE,
-                                                         G_PARAM_READABLE |
-                                                         G_PARAM_STATIC_STRINGS));
 
   manager = ephy_embed_shell_get_downloads_manager (EPHY_EMBED_SHELL (ephy_shell_get_default ()));
   g_signal_connect (manager, "download-completed", G_CALLBACK (download_completed_cb), NULL);
@@ -3943,7 +3895,7 @@ ephy_window_open_pages_view (EphyWindow *window)
 {
   g_assert (EPHY_IS_WINDOW (window));
 
-  hdy_deck_navigate (HDY_DECK (window->main_deck), HDY_NAVIGATION_DIRECTION_FORWARD);
+  adw_leaflet_navigate (ADW_LEAFLET (window->main_leaflet), ADW_NAVIGATION_DIRECTION_FORWARD);
 }
 
 /**
@@ -3957,7 +3909,7 @@ ephy_window_close_pages_view (EphyWindow *window)
 {
   g_assert (EPHY_IS_WINDOW (window));
 
-  hdy_deck_navigate (HDY_DECK (window->main_deck), HDY_NAVIGATION_DIRECTION_BACK);
+  adw_leaflet_navigate (ADW_LEAFLET (window->main_leaflet), ADW_NAVIGATION_DIRECTION_BACK);
 }
 
 /**
@@ -4027,7 +3979,6 @@ ephy_window_location_search (EphyWindow *window)
 {
   EphyTitleWidget *title_widget = ephy_header_bar_get_title_widget (EPHY_HEADER_BAR (window->header_bar));
   EphyLocationEntry *location_entry = EPHY_LOCATION_ENTRY (title_widget);
-  GtkEntry *location_gtk_entry = GTK_ENTRY (ephy_location_entry_get_entry (location_entry));
   GtkApplication *gtk_application = gtk_window_get_application (GTK_WINDOW (window));
   EphyEmbedShell *embed_shell = EPHY_EMBED_SHELL (gtk_application);
   EphySearchEngineManager *search_engine_manager = ephy_embed_shell_get_search_engine_manager (embed_shell);
@@ -4035,9 +3986,9 @@ ephy_window_location_search (EphyWindow *window)
   const char *search_engine_bang = ephy_search_engine_manager_get_bang (search_engine_manager, search_engine_name);
   char *entry_text = g_strconcat (search_engine_bang, " ", NULL);
 
-  gtk_window_set_focus (GTK_WINDOW (window), GTK_WIDGET (location_gtk_entry));
-  gtk_entry_set_text (location_gtk_entry, entry_text);
-  gtk_editable_set_position (GTK_EDITABLE (location_gtk_entry), strlen (entry_text));
+  gtk_window_set_focus (GTK_WINDOW (window), GTK_WIDGET (location_entry));
+  gtk_editable_set_text (GTK_EDITABLE (location_entry), entry_text);
+  gtk_editable_set_position (GTK_EDITABLE (location_entry), strlen (entry_text));
 
   g_free (entry_text);
   g_free (search_engine_name);
@@ -4186,7 +4137,7 @@ finish_window_close_after_modified_forms_check (WindowHasModifiedFormsData *data
   should_close = ephy_window_close (data->window);
   data->window->force_close = FALSE;
   if (should_close)
-    gtk_widget_destroy (GTK_WIDGET (data->window));
+    gtk_window_destroy (GTK_WINDOW (data->window));
 
   window_has_modified_forms_data_free (data);
 }
@@ -4196,7 +4147,7 @@ confirm_close_window_with_modified_forms_cb (GtkDialog                  *dialog,
                                              GtkResponseType             response,
                                              WindowHasModifiedFormsData *data)
 {
-  gtk_widget_destroy (GTK_WIDGET (dialog));
+  gtk_window_destroy (GTK_WINDOW (dialog));
 
   if (response == GTK_RESPONSE_ACCEPT)
     finish_window_close_after_modified_forms_check (data);
@@ -4301,7 +4252,7 @@ window_close_with_multiple_tabs_cb (GtkDialog       *dialog,
                                     GtkResponseType  response,
                                     EphyWindow      *window)
 {
-  gtk_widget_destroy (GTK_WIDGET (dialog));
+  gtk_window_destroy (GTK_WINDOW (dialog));
 
   if (response == GTK_RESPONSE_ACCEPT) {
     window->confirmed_close_with_multiple_tabs = TRUE;
@@ -4424,3 +4375,11 @@ ephy_window_get_geometry (EphyWindow   *window,
   rectangle->width = window->current_width;
   rectangle->height = window->current_height;
 }
+
+GActionGroup *
+ephy_window_get_action_group (EphyWindow *window,
+                              const char *prefix)
+{
+  return g_hash_table_lookup (window->action_groups, prefix);
+}
+

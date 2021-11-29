@@ -77,30 +77,30 @@ select_encoding_row (GtkListBox   *list_box,
                      EphyEncoding *encoding)
 {
   const char *target_encoding;
-  GList *rows, *r;
+  GtkListBoxRow *row;
+  int i;
 
   target_encoding = ephy_encoding_get_encoding (encoding);
-  rows = gtk_container_get_children (GTK_CONTAINER (list_box));
 
-  for (r = rows; r != NULL; r = r->next) {
+  i = 0;
+  while ((row = gtk_list_box_get_row_at_index (list_box, i++))) {
     EphyEncodingRow *ephy_encoding_row;
     EphyEncoding *ephy_encoding;
     const char *encoding_string = NULL;
 
-    ephy_encoding_row = EPHY_ENCODING_ROW (gtk_bin_get_child (GTK_BIN (r->data)));
+    ephy_encoding_row = EPHY_ENCODING_ROW (gtk_list_box_row_get_child (row));
     ephy_encoding = ephy_encoding_row_get_encoding (ephy_encoding_row);
     encoding_string = ephy_encoding_get_encoding (ephy_encoding);
 
     if (g_strcmp0 (encoding_string, target_encoding) == 0) {
       ephy_encoding_row_set_selected (ephy_encoding_row, TRUE);
 
-      gtk_list_box_select_row (list_box, GTK_LIST_BOX_ROW (r->data));
+      gtk_list_box_select_row (list_box, row);
       /* TODO scroll to row */
 
       break;
     }
   }
-  g_list_free (rows);
 }
 
 static void
@@ -217,25 +217,20 @@ ephy_encoding_dialog_response_cb (GtkWidget          *widget,
                                   int                 response,
                                   EphyEncodingDialog *dialog)
 {
-  gtk_widget_destroy (GTK_WIDGET (dialog));
-}
-
-static void
-clean_selected_row (gpointer row,
-                    gpointer null_pointer)
-{
-  EphyEncodingRow *ephy_encoding_row;
-  ephy_encoding_row = EPHY_ENCODING_ROW (gtk_bin_get_child (GTK_BIN (row)));
-  ephy_encoding_row_set_selected (ephy_encoding_row, FALSE);
+  gtk_window_destroy (GTK_WINDOW (dialog));
 }
 
 static void
 clean_selected_list_box (GtkListBox *list_box)
 {
-  GList *rows;
-  rows = gtk_container_get_children (GTK_CONTAINER (list_box));
-  g_list_foreach (rows, (GFunc)clean_selected_row, NULL);
-  g_list_free (rows);
+  GtkListBoxRow *row;
+  int i = 0;
+
+  while ((row = gtk_list_box_get_row_at_index (list_box, i++))) {
+    EphyEncodingRow *ephy_encoding_row =
+      EPHY_ENCODING_ROW (gtk_list_box_row_get_child (GTK_LIST_BOX_ROW (row)));
+    ephy_encoding_row_set_selected (ephy_encoding_row, FALSE);
+  }
 }
 
 static void
@@ -260,7 +255,7 @@ row_activated_cb (GtkListBox         *box,
 
   dialog->update_view_tag = TRUE;
 
-  ephy_encoding_row = EPHY_ENCODING_ROW (gtk_bin_get_child (GTK_BIN (row)));
+  ephy_encoding_row = EPHY_ENCODING_ROW (gtk_list_box_row_get_child (row));
   ephy_encoding = ephy_encoding_row_get_encoding (ephy_encoding_row);
   selected_encoding = ephy_encoding_get_encoding (ephy_encoding);
 
@@ -328,7 +323,7 @@ static void
 add_list_item (EphyEncoding *encoding,
                GtkListBox   *list_box)
 {
-  gtk_container_add (GTK_CONTAINER (list_box), GTK_WIDGET (ephy_encoding_row_new (encoding)));
+  gtk_list_box_append (GTK_LIST_BOX (list_box), GTK_WIDGET (ephy_encoding_row_new (encoding)));
 }
 
 static int

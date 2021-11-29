@@ -17,7 +17,8 @@
         "--socket=fallback-x11",
         "--socket=pulseaudio",
         "--socket=wayland",
-        "--system-talk-name=org.freedesktop.GeoClue2"
+        "--system-talk-name=org.freedesktop.GeoClue2",
+        "--env=WEBKIT_NICOSIA_PAINTING_THREADS=0"
     ],
     "modules" : [
          {

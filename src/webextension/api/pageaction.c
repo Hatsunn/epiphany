@@ -57,6 +57,7 @@ pageaction_handler_seticon (EphyWebExtension *self,
   GtkWidget *action;
   g_autoptr (JSCValue) path = NULL;
   g_autoptr (GdkPixbuf) pixbuf = NULL;
+  GtkWidget *child;
 
   action = pageaction_get_action (self, args);
   if (!action)
@@ -65,7 +66,10 @@ pageaction_handler_seticon (EphyWebExtension *self,
   path = jsc_value_object_get_property (args, "path");
   pixbuf = ephy_web_extension_load_pixbuf (self, jsc_value_to_string (path));
 
-  gtk_image_set_from_pixbuf (GTK_IMAGE (gtk_bin_get_child (GTK_BIN (action))), pixbuf);
+  /* action can be a GtkButton or GtkMenuButton. They both have a "child" property */
+  g_object_get (action, "child", &child, NULL);
+
+  gtk_image_set_from_pixbuf (GTK_IMAGE (child), pixbuf);
 
   return NULL;
 }
@@ -94,7 +98,7 @@ pageaction_handler_gettitle (EphyWebExtension *self,
                              JSCValue         *args)
 {
   GtkWidget *action;
-  g_autofree char *title = NULL;
+  const char *title = NULL;
 
   action = pageaction_get_action (self, args);
   if (!action)

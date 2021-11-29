@@ -40,6 +40,7 @@
 #include "api/runtime.h"
 #include "api/tabs.h"
 
+#include <adwaita.h>
 #include <json-glib/json-glib.h>
 
 struct _EphyWebExtensionManager {
@@ -150,6 +151,16 @@ ephy_web_extension_manager_scan_directory (EphyWebExtensionManager *self,
 }
 
 static void
+destroy_action (GtkWidget *action)
+{
+  GtkWidget *parent = gtk_widget_get_parent (action);
+
+  g_assert (GTK_IS_BOX (parent));
+
+  gtk_box_remove (GTK_BOX (parent), action);
+}
+
+static void
 ephy_web_extension_manager_constructed (GObject *object)
 {
   EphyWebExtensionManager *self = EPHY_WEB_EXTENSION_MANAGER (object);
@@ -157,7 +168,7 @@ ephy_web_extension_manager_constructed (GObject *object)
 
   self->background_web_views = g_hash_table_new (NULL, NULL);
   self->page_action_map = g_hash_table_new_full (NULL, NULL, NULL, (GDestroyNotify)g_hash_table_destroy);
-  self->browser_action_map = g_hash_table_new_full (NULL, NULL, NULL, (GDestroyNotify)gtk_widget_destroy);
+  self->browser_action_map = g_hash_table_new_full (NULL, NULL, NULL, (GDestroyNotify)destroy_action);
   self->web_extensions = NULL;
 
   ephy_web_extension_manager_scan_directory (self, dir);
@@ -282,7 +293,6 @@ ephy_web_extension_manager_uninstall (EphyWebExtensionManager *self,
   ephy_web_extension_remove (web_extension);
   ephy_web_extension_manager_remove_from_list (self, web_extension);
 }
-
 void
 ephy_web_extension_manager_update_location_entry (EphyWebExtensionManager *self,
                                                   EphyWindow              *window)
@@ -329,10 +339,12 @@ ephy_web_extension_manager_set_background_web_view (EphyWebExtensionManager *sel
   g_hash_table_insert (self->background_web_views, web_extension, web_view);
 }
 
-static gboolean
-page_action_clicked (GtkWidget      *event_box,
-                     GdkEventButton *event,
-                     gpointer        user_data)
+static void
+page_action_clicked (GtkGesture *gesture,
+                     int         n_press,
+                     double      x,
+                     double      y,
+                     gpointer    user_data)
 {
   EphyWebExtension *web_extension = EPHY_WEB_EXTENSION (user_data);
   EphyShell *shell = ephy_shell_get_default ();
@@ -343,6 +355,8 @@ page_action_clicked (GtkWidget      *event_box,
   g_autofree char *script = NULL;
   EphyWebExtensionManager *self = ephy_shell_get_web_extension_manager (shell);
   WebKitWebView *web_view = WEBKIT_WEB_VIEW (ephy_web_extension_manager_get_background_web_view (self, web_extension));
+
+  gtk_gesture_set_state (gesture, GTK_EVENT_SEQUENCE_CLAIMED);
 
   json_builder_begin_object (builder);
   json_builder_set_member_name (builder, "url");
@@ -362,8 +376,6 @@ page_action_clicked (GtkWidget      *event_box,
                                            NULL,
                                            NULL,
                                            NULL);
-
-  return GDK_EVENT_STOP;
 }
 
 static GtkWidget *
@@ -372,17 +384,20 @@ create_page_action_widget (EphyWebExtensionManager *self,
 {
   GtkWidget *image;
   GtkWidget *event_box;
-  GtkStyleContext *context;
+  GtkGesture *gesture;
 
   /* Create new event box with page action */
-  event_box = gtk_event_box_new ();
+  // FIXME: the bin is here so if some code does get_parent(), it won't fall
+  // apart. Remove this once we know nothing is doing this
+  event_box = adw_bin_new ();
   image = gtk_image_new ();
-  gtk_container_add (GTK_CONTAINER (event_box), image);
-  g_signal_connect_object (event_box, "button_press_event", G_CALLBACK (page_action_clicked), web_extension, 0);
-  gtk_widget_show_all (event_box);
+  adw_bin_set_child (ADW_BIN (event_box), image);
+  gtk_widget_add_css_class (image, "entry_icon");
 
-  context = gtk_widget_get_style_context (image);
-  gtk_style_context_add_class (context, "entry_icon");
+  gesture = gtk_gesture_click_new ();
+  g_signal_connect_object (gesture, "released",
+                           G_CALLBACK (page_action_clicked), web_extension, 0);
+  gtk_widget_add_controller (image, GTK_EVENT_CONTROLLER (gesture));
 
   return g_object_ref (event_box);
 }
@@ -548,7 +563,7 @@ ephy_web_extension_manager_add_web_extension_to_webview (EphyWebExtensionManager
 
       table = g_hash_table_lookup (self->page_action_map, web_extension);
       if (!table) {
-        table = g_hash_table_new_full (NULL, NULL, NULL, (GDestroyNotify)gtk_widget_destroy);
+        table = g_hash_table_new_full (NULL, NULL, NULL, (GDestroyNotify)NULL); // FIXME was gtk_widget_destroy
         g_hash_table_insert (self->page_action_map, web_extension, table);
       }
 
@@ -561,15 +576,15 @@ ephy_web_extension_manager_add_web_extension_to_webview (EphyWebExtensionManager
 }
 
 static void
-page_attached_cb (HdyTabView *tab_view,
-                  HdyTabPage *page,
+page_attached_cb (AdwTabView *tab_view,
+                  AdwTabPage *page,
                   gint        position,
                   gpointer    user_data)
 {
   EphyWebExtension *web_extension = EPHY_WEB_EXTENSION (user_data);
-  GtkWidget *child = hdy_tab_page_get_child (page);
+  GtkWidget *child = adw_tab_page_get_child (page);
   EphyWebView *web_view = ephy_embed_get_web_view (EPHY_EMBED (child));
-  EphyWindow *window = EPHY_WINDOW (gtk_widget_get_toplevel (GTK_WIDGET (tab_view)));
+  EphyWindow *window = EPHY_WINDOW (gtk_widget_get_root (GTK_WIDGET (tab_view)));
   EphyWebExtensionManager *self = ephy_shell_get_web_extension_manager (ephy_shell_get_default ());
 
   ephy_web_extension_manager_add_web_extension_to_webview (self, web_extension, window, web_view);
@@ -671,7 +686,7 @@ create_browser_popup (EphyWebExtension *web_extension)
   g_autofree char *dir_name = NULL;
   const char *popup;
 
-  popover = gtk_popover_new (NULL);
+  popover = gtk_popover_new ();
 
   web_view = create_web_extensions_webview (web_extension, TRUE);
 
@@ -680,8 +695,7 @@ create_browser_popup (EphyWebExtension *web_extension)
   base_uri = g_strdup_printf ("ephy-webextension:///%s/", dir_name);
   data = ephy_web_extension_get_resource_as_string (web_extension, popup);
   webkit_web_view_load_html (WEBKIT_WEB_VIEW (web_view), (char *)data, base_uri);
-  gtk_container_add (GTK_CONTAINER (popover), web_view);
-  gtk_widget_show_all (web_view);
+  gtk_popover_set_child (GTK_POPOVER (popover), web_view);
 
   return popover;
 }
@@ -728,8 +742,7 @@ create_browser_action (EphyWebExtension *web_extension)
     popover = create_browser_popup (web_extension);
     gtk_menu_button_set_popover (GTK_MENU_BUTTON (button), popover);
 
-    gtk_button_set_image (GTK_BUTTON (button), image);
-    gtk_widget_set_visible (button, TRUE);
+    gtk_menu_button_set_child (GTK_MENU_BUTTON (button), image);
   } else {
     GdkPixbuf *pixbuf = ephy_web_extension_browser_action_get_icon (web_extension, 16);
 
@@ -738,11 +751,10 @@ create_browser_action (EphyWebExtension *web_extension)
     if (pixbuf)
       image = gtk_image_new_from_pixbuf (pixbuf);
     else
-      image = gtk_image_new_from_icon_name ("application-x-addon-symbolic", GTK_ICON_SIZE_BUTTON);
+      image = gtk_image_new_from_icon_name ("application-x-addon-symbolic");
 
     g_signal_connect_object (button, "clicked", G_CALLBACK (on_browser_action_clicked), web_extension, 0);
-    gtk_button_set_image (GTK_BUTTON (button), image);
-    gtk_widget_set_visible (button, TRUE);
+    gtk_button_set_child (GTK_BUTTON (button), image);
   }
 
   return button;
@@ -754,7 +766,7 @@ ephy_web_extension_manager_add_web_extension_to_window (EphyWebExtensionManager 
                                                         EphyWindow              *window)
 {
   EphyTabView *tab_view = ephy_window_get_tab_view (EPHY_WINDOW (window));
-  HdyTabView *view = ephy_tab_view_get_tab_view (tab_view);
+  AdwTabView *view = ephy_tab_view_get_tab_view (tab_view);
 
   if (!ephy_web_extension_manager_is_active (self, web_extension))
     return;
@@ -821,7 +833,7 @@ ephy_web_extension_manager_remove_web_extension_from_window (EphyWebExtensionMan
                                                              EphyWindow              *window)
 {
   EphyTabView *tab_view = ephy_window_get_tab_view (EPHY_WINDOW (window));
-  HdyTabView *view = ephy_tab_view_get_tab_view (tab_view);
+  AdwTabView *view = ephy_tab_view_get_tab_view (tab_view);
   GtkWidget *browser_action_widget;
 
   if (ephy_web_extension_manager_is_active (self, web_extension))

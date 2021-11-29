@@ -548,7 +548,6 @@ launch_application (GAppInfo *app,
   g_autoptr (GdkAppLaunchContext) context = NULL;
   g_autoptr (GError) error = NULL;
   GdkDisplay *display;
-  GdkScreen *screen;
   gboolean res;
 
   /* This is impossible to implement inside sandbox. Higher layers must
@@ -557,10 +556,8 @@ launch_application (GAppInfo *app,
   g_assert (!ephy_is_running_inside_sandbox ());
 
   display = gdk_display_get_default ();
-  screen = gdk_screen_get_default ();
 
   context = gdk_display_get_app_launch_context (display);
-  gdk_app_launch_context_set_screen (context, screen);
   gdk_app_launch_context_set_timestamp (context, user_time);
 
   res = g_app_info_launch (app, files,
@@ -665,7 +662,7 @@ static gboolean
 open_in_default_handler (const char                   *uri,
                          const char                   *mime_type,
                          guint32                       timestamp,
-                         GdkScreen                    *screen,
+                         GdkDisplay                   *display,
                          EphyFileHelpersNotFlatpakTag  tag)
 {
   g_autoptr (GdkAppLaunchContext) context = NULL;
@@ -679,8 +676,7 @@ open_in_default_handler (const char                   *uri,
   g_assert (tag == EPHY_FILE_HELPERS_I_UNDERSTAND_I_MUST_NOT_USE_THIS_FUNCTION_UNDER_FLATPAK);
   g_assert (!ephy_is_running_inside_sandbox ());
 
-  context = gdk_display_get_app_launch_context (screen ? gdk_screen_get_display (screen) : gdk_display_get_default ());
-  gdk_app_launch_context_set_screen (context, screen);
+  context = gdk_display_get_app_launch_context (display ? display : gdk_display_get_default ());
   gdk_app_launch_context_set_timestamp (context, timestamp);
 
   appinfo = g_app_info_get_default_for_type (mime_type, TRUE);
@@ -703,10 +699,10 @@ open_in_default_handler (const char                   *uri,
 gboolean
 ephy_file_open_uri_in_default_browser (const char                   *uri,
                                        guint32                       user_time,
-                                       GdkScreen                    *screen,
+                                       GdkDisplay                   *display,
                                        EphyFileHelpersNotFlatpakTag  tag)
 {
-  return open_in_default_handler (uri, "x-scheme-handler/http", user_time, screen, tag);
+  return open_in_default_handler (uri, "x-scheme-handler/http", user_time, display, tag);
 }
 
 /**

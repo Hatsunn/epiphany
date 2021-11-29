@@ -30,24 +30,23 @@ struct _EphyDownloadsProgressIcon {
 
 G_DEFINE_TYPE (EphyDownloadsProgressIcon, ephy_downloads_progress_icon, GTK_TYPE_DRAWING_AREA)
 
-static gboolean
-ephy_downloads_progress_icon_draw (GtkWidget *widget,
-                                   cairo_t   *cr)
+static void
+ephy_downloads_progress_icon_draw (GtkDrawingArea *area,
+                                   cairo_t        *cr,
+                                   int             width,
+                                   int             height,
+                                   gpointer        user_data)
 {
-  gint width, height;
   EphyDownloadsManager *manager;
   GtkStyleContext *style_context;
   GdkRGBA color;
   gdouble progress;
 
-  width = gtk_widget_get_allocated_width (widget);
-  height = gtk_widget_get_allocated_height (widget);
-
   manager = ephy_embed_shell_get_downloads_manager (ephy_embed_shell_get_default ());
   progress = ephy_downloads_manager_get_estimated_progress (manager);
 
-  style_context = gtk_widget_get_style_context (widget);
-  gtk_style_context_get_color (style_context, gtk_widget_get_state_flags (widget), &color);
+  style_context = gtk_widget_get_style_context (GTK_WIDGET (area));
+  gtk_style_context_get_color (style_context, &color);
   color.alpha *= progress == 1 ? 1 : 0.2;
 
   gdk_cairo_set_source_rgba (cr, &color);
@@ -68,22 +67,23 @@ ephy_downloads_progress_icon_draw (GtkWidget *widget,
     cairo_rectangle (cr, 0, 0, width, height * progress);
     cairo_fill (cr);
   }
-
-  return TRUE;
 }
 
 static void
 ephy_downloads_progress_icon_class_init (EphyDownloadsProgressIconClass *klass)
 {
-  GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
-
-  widget_class->draw = ephy_downloads_progress_icon_draw;
 }
 
 static void
 ephy_downloads_progress_icon_init (EphyDownloadsProgressIcon *icon)
 {
   g_object_set (icon, "width-request", 16, "height-request", 16, NULL);
+
+  gtk_drawing_area_set_content_width (GTK_DRAWING_AREA (icon), 16);
+  gtk_drawing_area_set_content_height (GTK_DRAWING_AREA (icon), 16);
+  gtk_drawing_area_set_draw_func (GTK_DRAWING_AREA (icon),
+                                  ephy_downloads_progress_icon_draw,
+                                  NULL, NULL);
 }
 
 GtkWidget *

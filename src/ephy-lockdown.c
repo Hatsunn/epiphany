@@ -88,25 +88,25 @@ static const BindAction app_actions[] = {
 };
 
 static const BindAction app_mode_app_actions[] = {
-  { EPHY_PREFS_LOCKDOWN_HISTORY, "history", "enabled" }
+//  { EPHY_PREFS_LOCKDOWN_HISTORY, "history", "enabled" }
 };
 
 static const BindAction window_actions[] = {
   { EPHY_PREFS_LOCKDOWN_ARBITRARY_URL, "location", "enabled"},
 
-  { EPHY_PREFS_LOCKDOWN_BOOKMARK_EDITING, "bookmark-page", "enabled" },
+//  { EPHY_PREFS_LOCKDOWN_BOOKMARK_EDITING, "bookmark-page", "enabled" },
 
   { EPHY_PREFS_LOCKDOWN_FULLSCREEN, "fullscreen", "enabled" },
 
   { EPHY_PREFS_LOCKDOWN_PRINTING, "print", "enabled" },
 
-  { EPHY_PREFS_LOCKDOWN_SAVE_TO_DISK, "save-as", "enabled" }
+//  { EPHY_PREFS_LOCKDOWN_SAVE_TO_DISK, "save-as", "enabled" }
 };
 
 static const BindAction popup_actions[] = {
   { EPHY_PREFS_LOCKDOWN_SAVE_TO_DISK, "download-link-as", "enabled" },
   { EPHY_PREFS_LOCKDOWN_SAVE_TO_DISK, "save-image-as", "enabled" },
-  { EPHY_PREFS_LOCKDOWN_BOOKMARK_EDITING, "context-bookmark-page", "enabled" },
+//  { EPHY_PREFS_LOCKDOWN_BOOKMARK_EDITING, "context-bookmark-page", "enabled" },
 
   { EPHY_PREFS_LOCKDOWN_FULLSCREEN, "open-link-in-new-window", "enabled" }
 };
@@ -215,22 +215,19 @@ window_added_cb (GtkApplication *application,
                              action_group, app_mode_app_actions,
                              G_N_ELEMENTS (app_mode_app_actions));
 
-  action_group = gtk_widget_get_action_group (GTK_WIDGET (window),
-                                              "win");
+  action_group = ephy_window_get_action_group (EPHY_WINDOW (window), "win");
   bind_settings_and_actions (EPHY_SETTINGS_LOCKDOWN,
                              action_group,
                              window_actions,
                              G_N_ELEMENTS (window_actions));
 
-  action_group = gtk_widget_get_action_group (GTK_WIDGET (window),
-                                              "toolbar");
+  action_group = ephy_window_get_action_group (EPHY_WINDOW (window), "toolbar");
   bind_settings_and_actions (EPHY_SETTINGS_LOCKDOWN,
                              action_group,
                              toolbar_actions,
                              G_N_ELEMENTS (toolbar_actions));
 
-  action_group = gtk_widget_get_action_group (GTK_WIDGET (window),
-                                              "popup");
+  action_group = ephy_window_get_action_group (EPHY_WINDOW (window), "popup");
   bind_settings_and_actions (EPHY_SETTINGS_LOCKDOWN,
                              action_group, popup_actions,
                              G_N_ELEMENTS (popup_actions));

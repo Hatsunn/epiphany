@@ -27,13 +27,13 @@
 #include "ephy-tab-view.h"
 #include "ephy-web-view.h"
 
-#include <handy.h>
+#include <adwaita.h>
 
 G_BEGIN_DECLS
 
 #define EPHY_TYPE_WINDOW (ephy_window_get_type ())
 
-G_DECLARE_FINAL_TYPE (EphyWindow, ephy_window, EPHY, WINDOW, HdyApplicationWindow)
+G_DECLARE_FINAL_TYPE (EphyWindow, ephy_window, EPHY, WINDOW, AdwApplicationWindow)
 
 typedef enum
 {
@@ -94,6 +94,9 @@ gboolean          ephy_window_is_fullscreen              (EphyWindow *window);
 
 void              ephy_window_get_geometry               (EphyWindow   *window,
                                                           GdkRectangle *rectangle);
+
+GActionGroup     *ephy_window_get_action_group           (EphyWindow  *window,
+                                                          const char  *prefix);
 
 void ephy_window_sync_bookmark_state (GtkWidget             *widget,
                                       EphyBookmarkIconState  state);

@@ -31,7 +31,7 @@ struct _EphyLangRow {
 
   GtkWidget *dnd_top_revealer;
   GtkWidget *action_row;
-  GtkWidget *drag_event_box;
+  GtkWidget *drag_handle;
   GtkWidget *delete_button;
   GtkWidget *dnd_bottom_revealer;
   char *code;
@@ -78,7 +78,7 @@ ephy_lang_row_class_init (EphyLangRowClass *klass)
 
   gtk_widget_class_bind_template_child (widget_class, EphyLangRow, dnd_top_revealer);
   gtk_widget_class_bind_template_child (widget_class, EphyLangRow, action_row);
-  gtk_widget_class_bind_template_child (widget_class, EphyLangRow, drag_event_box);
+  gtk_widget_class_bind_template_child (widget_class, EphyLangRow, drag_handle);
   gtk_widget_class_bind_template_child (widget_class, EphyLangRow, delete_button);
   gtk_widget_class_bind_template_child (widget_class, EphyLangRow, dnd_bottom_revealer);
 
@@ -101,7 +101,7 @@ void
 ephy_lang_row_set_title (EphyLangRow *self,
                          const char  *title)
 {
-  hdy_preferences_row_set_title (HDY_PREFERENCES_ROW (self->action_row), title);
+  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (self->action_row), title);
 }
 
 void
@@ -121,9 +121,9 @@ ephy_lang_row_get_code (EphyLangRow *self)
 }
 
 GtkWidget *
-ephy_lang_row_get_drag_event_box (EphyLangRow *self)
+ephy_lang_row_get_drag_handle (EphyLangRow *self)
 {
-  return self->drag_event_box;
+  return self->drag_handle;
 }
 
 void

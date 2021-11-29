@@ -35,8 +35,8 @@
 #include "ephy-title-widget.h"
 #include "ephy-type-builtins.h"
 
+#include <adwaita.h>
 #include <glib/gi18n.h>
-#include <handy.h>
 
 #define POPOVER_HIDE_DELAY 300
 
@@ -52,7 +52,7 @@ static GParamSpec *object_properties[N_PROPERTIES] = { NULL, };
 static const char *REFRESH_BUTTON_TOOLTIP = N_("Reload the current page");
 
 struct _EphyHeaderBar {
-  GtkBin parent_instance;
+  AdwBin parent_instance;
 
   GtkWidget *header_bar;
   EphyWindow *window;
@@ -65,13 +65,12 @@ struct _EphyHeaderBar {
   GtkWidget *zoom_level_label;
   GtkWidget *restore_button;
   GtkWidget *combined_stop_reload_button;
-  GtkWidget *combined_stop_reload_image;
   GtkWidget *page_menu_popover;
 
   guint popover_hide_timeout_id;
 };
 
-G_DEFINE_TYPE (EphyHeaderBar, ephy_header_bar, GTK_TYPE_BIN)
+G_DEFINE_TYPE (EphyHeaderBar, ephy_header_bar, ADW_TYPE_BIN)
 
 static void
 ephy_header_bar_set_property (GObject      *object,
@@ -125,7 +124,7 @@ sync_chromes_visibility (EphyHeaderBar *header_bar)
 static gboolean
 hide_timeout_cb (EphyHeaderBar *header_bar)
 {
-  gtk_popover_popdown (GTK_POPOVER (header_bar->page_menu_popover));
+  gtk_menu_button_popdown (GTK_MENU_BUTTON (header_bar->page_menu_button));
 
   header_bar->popover_hide_timeout_id = 0;
 
@@ -137,9 +136,9 @@ fullscreen_changed_cb (EphyHeaderBar *header_bar)
 {
   gboolean fullscreen;
 
-  g_object_get (header_bar->window, "fullscreen", &fullscreen, NULL);
+  g_object_get (header_bar->window, "fullscreened", &fullscreen, NULL);
 
-  gtk_header_bar_set_show_close_button (GTK_HEADER_BAR (header_bar->header_bar), !fullscreen);
+  gtk_header_bar_set_show_title_buttons (GTK_HEADER_BAR (header_bar->header_bar), !fullscreen);
   gtk_widget_set_visible (header_bar->restore_button, fullscreen);
 
   if (fullscreen) {
@@ -150,6 +149,7 @@ fullscreen_changed_cb (EphyHeaderBar *header_bar)
   }
 }
 
+#if 0
 static void
 add_bookmark_button_clicked_cb (EphyLocationEntry *entry,
                                 gpointer          *user_data)
@@ -158,7 +158,7 @@ add_bookmark_button_clicked_cb (EphyLocationEntry *entry,
   GActionGroup *action_group;
   GAction *action;
 
-  action_group = gtk_widget_get_action_group (GTK_WIDGET (header_bar->window), "win");
+  action_group = ephy_window_get_action_group (header_bar->window, "win");
   action = g_action_map_lookup_action (G_ACTION_MAP (action_group), "bookmark-page");
 
   g_action_activate (action, NULL);
@@ -171,11 +171,12 @@ restore_button_clicked_cb (GtkButton     *button,
   GActionGroup *action_group;
   GAction *action;
 
-  action_group = gtk_widget_get_action_group (GTK_WIDGET (header_bar->window), "win");
+  action_group = ephy_window_get_action_group (header_bar->window, "win");
   action = g_action_map_lookup_action (G_ACTION_MAP (action_group), "fullscreen");
 
   g_action_activate (action, NULL);
 }
+#endif
 
 static void
 update_revealer_visibility (GtkRevealer *revealer)
@@ -200,26 +201,23 @@ ephy_header_bar_constructed (GObject *object)
   g_signal_connect_object (header_bar->window, "notify::chrome",
                            G_CALLBACK (sync_chromes_visibility), header_bar,
                            G_CONNECT_SWAPPED);
-  g_signal_connect_object (header_bar->window, "notify::fullscreen",
+  g_signal_connect_object (header_bar->window, "notify::fullscreened",
                            G_CALLBACK (fullscreen_changed_cb), header_bar,
                            G_CONNECT_SWAPPED);
 
   /* Header bar */
   header_bar->header_bar = gtk_header_bar_new ();
-  gtk_header_bar_set_show_close_button (GTK_HEADER_BAR (header_bar->header_bar), TRUE);
-  gtk_widget_show (header_bar->header_bar);
-  gtk_container_add (GTK_CONTAINER (header_bar), header_bar->header_bar);
+  adw_bin_set_child (ADW_BIN (header_bar), header_bar->header_bar);
 
   /* Start action elements */
   header_bar->action_bar_start = ephy_action_bar_start_new ();
-  gtk_widget_show (GTK_WIDGET (header_bar->action_bar_start));
   header_bar->start_revealer = GTK_REVEALER (gtk_revealer_new ());
   g_signal_connect (header_bar->start_revealer, "notify::child-revealed",
                     G_CALLBACK (update_revealer_visibility), NULL);
   g_signal_connect (header_bar->start_revealer, "notify::reveal-child",
                     G_CALLBACK (update_revealer_visibility), NULL);
   gtk_revealer_set_transition_type (GTK_REVEALER (header_bar->start_revealer), GTK_REVEALER_TRANSITION_TYPE_SLIDE_RIGHT);
-  gtk_container_add (GTK_CONTAINER (header_bar->start_revealer), GTK_WIDGET (header_bar->action_bar_start));
+  gtk_revealer_set_child (GTK_REVEALER (header_bar->start_revealer), GTK_WIDGET (header_bar->action_bar_start));
 
   gtk_header_bar_pack_start (GTK_HEADER_BAR (header_bar->header_bar),
                              GTK_WIDGET (header_bar->start_revealer));
@@ -229,14 +227,11 @@ ephy_header_bar_constructed (GObject *object)
   /* Title widget (location entry or title box) */
   if (ephy_embed_shell_get_mode (embed_shell) == EPHY_EMBED_SHELL_MODE_APPLICATION)
     header_bar->title_widget = EPHY_TITLE_WIDGET (ephy_title_box_new ());
-  else {
+  else
     header_bar->title_widget = EPHY_TITLE_WIDGET (ephy_location_entry_new ());
-  }
 
-  event_box = gtk_event_box_new ();
-  gtk_widget_add_events (event_box, GDK_ALL_EVENTS_MASK);
-  gtk_widget_show (event_box);
-  gtk_header_bar_set_custom_title (GTK_HEADER_BAR (header_bar->header_bar), event_box);
+  event_box = adw_bin_new ();
+  gtk_header_bar_set_title_widget (GTK_HEADER_BAR (header_bar->header_bar), event_box);
   gtk_widget_set_name (event_box, "title-box-container");
 
   if (is_desktop_pantheon ()) {
@@ -245,22 +240,20 @@ ephy_header_bar_constructed (GObject *object)
     gtk_widget_set_margin_start (GTK_WIDGET (header_bar->title_widget), 6);
     gtk_widget_set_margin_end (GTK_WIDGET (header_bar->title_widget), 6);
 
-    gtk_container_add (GTK_CONTAINER (event_box), GTK_WIDGET (header_bar->title_widget));
+    adw_bin_set_child (ADW_BIN (event_box), GTK_WIDGET (header_bar->title_widget));
   } else {
     GtkWidget *clamp;
 
-    clamp = hdy_clamp_new ();
+    clamp = adw_clamp_new ();
     gtk_widget_set_hexpand (GTK_WIDGET (clamp), TRUE);
-    gtk_widget_show (clamp);
-    hdy_clamp_set_maximum_size (HDY_CLAMP (clamp), 860);
-    hdy_clamp_set_tightening_threshold (HDY_CLAMP (clamp), 560);
-    gtk_container_add (GTK_CONTAINER (clamp), GTK_WIDGET (header_bar->title_widget));
+    adw_clamp_set_maximum_size (ADW_CLAMP (clamp), 860);
+    adw_clamp_set_tightening_threshold (ADW_CLAMP (clamp), 560);
+    adw_clamp_set_child (ADW_CLAMP (clamp), GTK_WIDGET (header_bar->title_widget));
 
-    gtk_container_add (GTK_CONTAINER (event_box), clamp);
+    adw_bin_set_child (ADW_BIN (event_box), clamp);
   }
 
-  gtk_widget_show (GTK_WIDGET (header_bar->title_widget));
-
+#if 0
   if (EPHY_IS_LOCATION_ENTRY (header_bar->title_widget)) {
     EphyLocationEntry *lentry = EPHY_LOCATION_ENTRY (header_bar->title_widget);
     GtkWidget *popover = ephy_add_bookmark_popover_new (ephy_location_entry_get_bookmark_widget (lentry), GTK_WIDGET (header_bar->window));
@@ -274,25 +267,25 @@ ephy_header_bar_constructed (GObject *object)
                              header_bar,
                              0);
   }
+#endif
 
   /* Fullscreen restore button */
-  header_bar->restore_button = gtk_button_new_from_icon_name ("view-restore-symbolic",
-                                                              GTK_ICON_SIZE_BUTTON);
-  g_signal_connect_object (header_bar->restore_button, "clicked",
-                           G_CALLBACK (restore_button_clicked_cb),
-                           header_bar, 0);
+  header_bar->restore_button = gtk_button_new_from_icon_name ("view-restore-symbolic");
+  gtk_widget_hide (header_bar->restore_button);
+//  g_signal_connect_object (header_bar->restore_button, "clicked",
+//                           G_CALLBACK (restore_button_clicked_cb),
+//                           header_bar, 0);
   gtk_header_bar_pack_end (GTK_HEADER_BAR (header_bar->header_bar),
                            GTK_WIDGET (header_bar->restore_button));
 
   /* Page Menu */
   button = gtk_menu_button_new ();
   header_bar->page_menu_button = button;
-  gtk_button_set_image (GTK_BUTTON (button),
-                        gtk_image_new_from_icon_name ("open-menu-symbolic", GTK_ICON_SIZE_BUTTON));
-  g_type_ensure (G_TYPE_THEMED_ICON);
+  gtk_menu_button_set_icon_name (GTK_MENU_BUTTON (button), "open-menu-symbolic");
   builder = gtk_builder_new_from_resource ("/org/gnome/epiphany/gtk/page-menu-popover.ui");
   header_bar->page_menu_popover = GTK_WIDGET (gtk_builder_get_object (builder, "page-menu-popover"));
   header_bar->zoom_level_label = GTK_WIDGET (gtk_builder_get_object (builder, "zoom-level"));
+#if 0
   if (ephy_embed_shell_get_mode (embed_shell) == EPHY_EMBED_SHELL_MODE_APPLICATION) {
     gtk_widget_destroy (GTK_WIDGET (gtk_builder_get_object (builder, "new-window-separator")));
     gtk_widget_destroy (GTK_WIDGET (gtk_builder_get_object (builder, "new-window-button")));
@@ -321,19 +314,17 @@ ephy_header_bar_constructed (GObject *object)
     gtk_widget_destroy (GTK_WIDGET (gtk_builder_get_object (builder, "run-in-background-separator")));
     gtk_widget_destroy (GTK_WIDGET (gtk_builder_get_object (builder, "run-in-background-button")));
   }
+#endif
 
   header_bar->combined_stop_reload_button = GTK_WIDGET (gtk_builder_get_object (builder, "combined_stop_reload_button"));
-  header_bar->combined_stop_reload_image = GTK_WIDGET (gtk_builder_get_object (builder, "combined_stop_reload_image"));
   gtk_widget_set_tooltip_text (header_bar->combined_stop_reload_button, _(REFRESH_BUTTON_TOOLTIP));
 
   if (is_desktop_pantheon ()) {
-    gtk_widget_destroy (GTK_WIDGET (gtk_builder_get_object (builder, "about-button")));
+//    gtk_widget_destroy (GTK_WIDGET (gtk_builder_get_object (builder, "about-button")));
 
-    gtk_button_set_image (GTK_BUTTON (button),
-                          gtk_image_new_from_icon_name ("open-menu",
-                                                        GTK_ICON_SIZE_LARGE_TOOLBAR));
+    gtk_button_set_icon_name (GTK_BUTTON (button), "open-menu");
   }
-  g_settings_bind (EPHY_SETTINGS_WEB, EPHY_PREFS_WEB_ENABLE_WEBEXTENSIONS, gtk_builder_get_object (builder, "extensions-button"), "visible", G_SETTINGS_BIND_DEFAULT);
+//  g_settings_bind (EPHY_SETTINGS_WEB, EPHY_PREFS_WEB_ENABLE_WEBEXTENSIONS, gtk_builder_get_object (builder, "extensions-button"), "visible", G_SETTINGS_BIND_DEFAULT);
 
   gtk_menu_button_set_popover (GTK_MENU_BUTTON (button), header_bar->page_menu_popover);
   g_object_unref (builder);
@@ -342,14 +333,13 @@ ephy_header_bar_constructed (GObject *object)
 
   /* End action elements */
   header_bar->action_bar_end = ephy_action_bar_end_new ();
-  gtk_widget_show (GTK_WIDGET (header_bar->action_bar_end));
   header_bar->end_revealer = GTK_REVEALER (gtk_revealer_new ());
   g_signal_connect (header_bar->end_revealer, "notify::child-revealed",
                     G_CALLBACK (update_revealer_visibility), NULL);
   g_signal_connect (header_bar->end_revealer, "notify::reveal-child",
                     G_CALLBACK (update_revealer_visibility), NULL);
   gtk_revealer_set_transition_type (GTK_REVEALER (header_bar->end_revealer), GTK_REVEALER_TRANSITION_TYPE_SLIDE_LEFT);
-  gtk_container_add (GTK_CONTAINER (header_bar->end_revealer), GTK_WIDGET (header_bar->action_bar_end));
+  gtk_revealer_set_child (GTK_REVEALER (header_bar->end_revealer), GTK_WIDGET (header_bar->action_bar_end));
 
   gtk_header_bar_pack_end (GTK_HEADER_BAR (header_bar->header_bar),
                            GTK_WIDGET (header_bar->end_revealer));
@@ -477,16 +467,14 @@ ephy_header_bar_start_change_combined_stop_reload_state (EphyHeaderBar *header_b
                                                          gboolean       loading)
 {
   if (loading) {
-    gtk_image_set_from_icon_name (GTK_IMAGE (header_bar->combined_stop_reload_image),
-                                  "process-stop-symbolic",
-                                  get_icon_size ());
+    gtk_button_set_icon_name (GTK_BUTTON (header_bar->combined_stop_reload_button),
+                              "process-stop-symbolic");
     /* Translators: tooltip for the stop button */
     gtk_widget_set_tooltip_text (header_bar->combined_stop_reload_button,
                                  _("Stop loading the current page"));
   } else {
-    gtk_image_set_from_icon_name (GTK_IMAGE (header_bar->combined_stop_reload_image),
-                                  "view-refresh-symbolic",
-                                  get_icon_size ());
+    gtk_button_set_icon_name (GTK_BUTTON (header_bar->combined_stop_reload_button),
+                              "view-refresh-symbolic");
     gtk_widget_set_tooltip_text (header_bar->combined_stop_reload_button,
                                  _(REFRESH_BUTTON_TOOLTIP));
   }

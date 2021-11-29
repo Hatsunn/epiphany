@@ -30,7 +30,7 @@
 #include <webkit2/webkit2.h>
 
 struct _EphyDownloadWidget {
-  GtkEventBox parent_instance;
+  AdwBin parent_instance;
 
   EphyDownload *download;
 
@@ -41,7 +41,7 @@ struct _EphyDownloadWidget {
   GtkWidget *action_button;
 };
 
-G_DEFINE_TYPE (EphyDownloadWidget, ephy_download_widget, GTK_TYPE_EVENT_BOX)
+G_DEFINE_TYPE (EphyDownloadWidget, ephy_download_widget, ADW_TYPE_BIN)
 
 enum {
   PROP_0,
@@ -135,7 +135,7 @@ update_download_icon (EphyDownloadWidget *widget)
   } else
     icon = g_icon_new_for_string ("package-x-generic-symbolic", NULL);
 
-  gtk_image_set_from_gicon (GTK_IMAGE (widget->icon), icon, GTK_ICON_SIZE_MENU);
+  gtk_image_set_from_gicon (GTK_IMAGE (widget->icon), icon);
 }
 
 static void
@@ -211,9 +211,8 @@ download_finished_cb (EphyDownload       *download,
 {
   gtk_widget_hide (widget->progress);
   update_status_label (widget, _("Finished"));
-  gtk_image_set_from_icon_name (GTK_IMAGE (gtk_button_get_image (GTK_BUTTON (widget->action_button))),
-                                "folder-open-symbolic",
-                                GTK_ICON_SIZE_MENU);
+  gtk_button_set_icon_name (GTK_BUTTON (widget->action_button),
+                            "folder-open-symbolic");
 }
 
 static void
@@ -237,9 +236,8 @@ download_failed_cb (EphyDownload       *download,
 
   error_msg = g_strdup_printf (_("Error downloading: %s"), error->message);
   update_status_label (widget, error_msg);
-  gtk_image_set_from_icon_name (GTK_IMAGE (gtk_button_get_image (GTK_BUTTON (widget->action_button))),
-                                "list-remove-symbolic",
-                                GTK_ICON_SIZE_MENU);
+  gtk_button_set_icon_name (GTK_BUTTON (widget->action_button),
+                            "list-remove-symbolic");
 }
 
 static void
@@ -273,7 +271,7 @@ widget_action_button_clicked_cb (EphyDownloadWidget *widget)
   } else {
     ephy_download_do_download_action (widget->download,
                                       EPHY_DOWNLOAD_ACTION_BROWSE_TO,
-                                      gtk_get_current_event_time ());
+                                      GDK_CURRENT_TIME);
   }
 }
 
@@ -285,6 +283,7 @@ download_destination_changed_cb (WebKitDownload     *download,
   update_download_destination (widget);
 }
 
+/*
 static void
 download_drag_data_get (GtkWidget        *widget,
                         GdkDragContext   *context,
@@ -302,6 +301,7 @@ download_drag_data_get (GtkWidget        *widget,
   gtk_selection_data_set_uris (selection_data, uris);
   g_free (uris[0]);
 }
+*/
 
 static void
 ephy_download_widget_get_property (GObject    *object,
@@ -379,11 +379,7 @@ ephy_download_widget_constructed (GObject *object)
 
   grid = gtk_grid_new ();
   gtk_widget_show (grid);
-  gtk_widget_set_margin_start (GTK_WIDGET (grid), 12);
-  gtk_widget_set_margin_end (GTK_WIDGET (grid), 12);
-  gtk_widget_set_margin_top (GTK_WIDGET (grid), 12);
-  gtk_widget_set_margin_bottom (GTK_WIDGET (grid), 12);
-  gtk_container_add (GTK_CONTAINER (widget), grid);
+  adw_bin_set_child (ADW_BIN (widget), grid);
 
   widget->icon = gtk_image_new ();
   gtk_widget_set_margin_end (widget->icon, 4);
@@ -437,7 +433,7 @@ ephy_download_widget_constructed (GObject *object)
     action_icon_name = "list-remove-symbolic";
   else
     action_icon_name = "window-close-symbolic";
-  widget->action_button = gtk_button_new_from_icon_name (action_icon_name, GTK_ICON_SIZE_MENU);
+  widget->action_button = gtk_button_new_from_icon_name (action_icon_name);
   g_signal_connect_swapped (widget->action_button, "clicked",
                             G_CALLBACK (widget_action_button_clicked_cb),
                             widget);
@@ -446,7 +442,6 @@ ephy_download_widget_constructed (GObject *object)
   gtk_style_context_add_class (gtk_widget_get_style_context (widget->action_button),
                                "circular");
   gtk_grid_attach (GTK_GRID (grid), widget->action_button, 3, 0, 1, 3);
-  gtk_widget_show (widget->action_button);
 
   download = ephy_download_get_webkit_download (widget->download);
   g_signal_connect (download, "notify::estimated-progress",
@@ -468,9 +463,9 @@ ephy_download_widget_constructed (GObject *object)
                     G_CALLBACK (download_content_type_changed_cb),
                     widget);
 
-  gtk_drag_source_set (GTK_WIDGET (widget), GDK_BUTTON1_MASK, NULL, 0, GDK_ACTION_COPY);
-  gtk_drag_source_add_uri_targets (GTK_WIDGET (widget));
-  g_signal_connect_object (widget, "drag-data-get", G_CALLBACK (download_drag_data_get), download, 0);
+//  gtk_drag_source_set (GTK_WIDGET (widget), GDK_BUTTON1_MASK, NULL, 0, GDK_ACTION_COPY);
+//  gtk_drag_source_add_uri_targets (GTK_WIDGET (widget));
+//  g_signal_connect_object (widget, "drag-data-get", G_CALLBACK (download_drag_data_get), download, 0);
 }
 
 static void

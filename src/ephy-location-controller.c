@@ -23,18 +23,17 @@
 #include "ephy-location-controller.h"
 
 #include "ephy-debug.h"
-#include "ephy-dnd.h"
+//#include "ephy-dnd.h"
 #include "ephy-embed-container.h"
 #include "ephy-embed-utils.h"
 #include "ephy-link.h"
-#include "ephy-location-entry.h"
+//#include "ephy-location-entry.h"
 #include "ephy-shell.h"
 #include "ephy-suggestion-model.h"
 #include "ephy-title-widget.h"
 #include "ephy-uri-helpers.h"
 #include "ephy-widgets-type-builtins.h"
 
-#include <dazzle.h>
 #include <gdk/gdkkeysyms.h>
 #include <gtk/gtk.h>
 #include <string.h>
@@ -78,7 +77,7 @@ static GParamSpec *obj_properties[LAST_PROP];
 G_DEFINE_TYPE_WITH_CODE (EphyLocationController, ephy_location_controller, G_TYPE_OBJECT,
                          G_IMPLEMENT_INTERFACE (EPHY_TYPE_LINK,
                                                 NULL))
-
+/*
 static void
 entry_drag_data_received_cb (GtkWidget              *widget,
                              GdkDragContext         *context,
@@ -128,7 +127,7 @@ entry_drag_data_received_cb (GtkWidget              *widget,
     g_free (address);
   }
 }
-
+*/
 static void
 entry_activate_cb (GtkEntry               *entry,
                    EphyLocationController *controller)
@@ -142,7 +141,7 @@ entry_activate_cb (GtkEntry               *entry,
     g_signal_handlers_unblock_by_func (controller, G_CALLBACK (sync_address), entry);
   }
 
-  content = gtk_entry_get_text (entry);
+  content = gtk_editable_get_text (GTK_EDITABLE (entry));
   if (content == NULL || content[0] == '\0')
     return;
 
@@ -201,8 +200,8 @@ entry_activate_cb (GtkEntry               *entry,
   }
 #endif
 
-  ephy_link_open (EPHY_LINK (controller), effective_address, NULL,
-                  ephy_link_flags_from_current_event () | EPHY_LINK_TYPED);
+//  ephy_link_open (EPHY_LINK (controller), effective_address, NULL,
+//                  ephy_link_flags_from_current_event () | EPHY_LINK_TYPED);
 
   g_free (effective_address);
 }
@@ -212,6 +211,7 @@ static void
 user_changed_cb (GtkWidget              *widget,
                  EphyLocationController *controller)
 {
+/*
   const char *address;
   DzlSuggestionEntry *entry = DZL_SUGGESTION_ENTRY (ephy_location_entry_get_entry (EPHY_LOCATION_ENTRY (widget)));
   GListModel *model;
@@ -222,7 +222,7 @@ user_changed_cb (GtkWidget              *widget,
 
   model = dzl_suggestion_entry_get_model (entry);
 
-  ephy_suggestion_model_query_async (EPHY_SUGGESTION_MODEL (model), address, TRUE, NULL, NULL, NULL);
+  ephy_suggestion_model_query_async (EPHY_SUGGESTION_MODEL (model), address, TRUE, NULL, NULL, NULL);*/
 }
 
 static void
@@ -237,6 +237,7 @@ sync_address (EphyLocationController *controller,
   g_signal_handlers_unblock_by_func (widget, G_CALLBACK (user_changed_cb), controller);
 }
 
+#if 0
 static char *
 get_location_cb (EphyLocationEntry      *entry,
                  EphyLocationController *controller)
@@ -292,6 +293,7 @@ focus_out_event_cb (GtkWidget              *entry,
 
   return FALSE;
 }
+#endif
 
 static void
 notify_selected_index_cb (EphyLocationController *controller)
@@ -321,14 +323,14 @@ reader_mode_button_clicked_cb (GtkButton *button,
   EphyWindow *window = controller->window;
   EphyEmbed *embed = ephy_embed_container_get_active_child (EPHY_EMBED_CONTAINER (window));
   EphyWebView *view = ephy_embed_get_web_view (embed);
-  EphyLocationEntry *lentry;
+/*  EphyLocationEntry *lentry;
 
   g_assert (EPHY_IS_LOCATION_ENTRY (controller->title_widget));
 
   lentry = EPHY_LOCATION_ENTRY (controller->title_widget);
 
   ephy_location_entry_set_reader_mode_state (lentry, !ephy_location_entry_get_reader_mode_state (lentry));
-  ephy_web_view_toggle_reader_mode (view, ephy_location_entry_get_reader_mode_state (lentry));
+  ephy_web_view_toggle_reader_mode (view, ephy_location_entry_get_reader_mode_state (lentry));*/
 }
 
 static void
@@ -353,7 +355,7 @@ ephy_location_controller_constructed (GObject *object)
   sync_address (controller, NULL, widget);
   g_signal_connect_object (controller, "notify::address",
                            G_CALLBACK (sync_address), widget, 0);
-
+/*
   if (!EPHY_IS_LOCATION_ENTRY (controller->title_widget))
     return;
 
@@ -390,7 +392,7 @@ ephy_location_controller_constructed (GObject *object)
   g_signal_connect_object (widget, "focus-in-event",
                            G_CALLBACK (focus_in_event_cb), controller, 0);
   g_signal_connect_object (widget, "focus-out-event",
-                           G_CALLBACK (focus_out_event_cb), controller, 0);
+                           G_CALLBACK (focus_out_event_cb), controller, 0);*/
 }
 
 static void
@@ -449,12 +451,12 @@ ephy_location_controller_dispose (GObject *object)
 
   g_clear_object (&controller->longpress_gesture);
 
-  if (EPHY_IS_LOCATION_ENTRY (controller->title_widget)) {
+/*  if (EPHY_IS_LOCATION_ENTRY (controller->title_widget)) {
     g_signal_handlers_disconnect_matched (controller, G_SIGNAL_MATCH_DATA,
                                           0, 0, NULL, NULL, controller->title_widget);
     g_signal_handlers_disconnect_matched (controller->title_widget, G_SIGNAL_MATCH_DATA,
                                           0, 0, NULL, NULL, controller);
-  }
+  }*/
   controller->title_widget = NULL;
 
   G_OBJECT_CLASS (ephy_location_controller_parent_class)->dispose (object);

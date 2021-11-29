@@ -20,17 +20,17 @@
 
 #pragma once
 
-#include <handy.h>
+#include <gtk/gtk.h>
 
 G_BEGIN_DECLS
 
 #define EPHY_TYPE_DATA_VIEW (ephy_data_view_get_type ())
 
-G_DECLARE_DERIVABLE_TYPE (EphyDataView, ephy_data_view, EPHY, DATA_VIEW, GtkBin)
+G_DECLARE_DERIVABLE_TYPE (EphyDataView, ephy_data_view, EPHY, DATA_VIEW, GtkWidget)
 
 struct _EphyDataViewClass
 {
-  GtkBinClass parent_class;
+  GtkWidgetClass parent_class;
 };
 
 const gchar *ephy_data_view_get_clear_button_label (EphyDataView *self);

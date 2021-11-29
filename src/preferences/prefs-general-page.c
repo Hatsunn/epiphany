@@ -442,7 +442,7 @@ language_editor_add (PrefsGeneralPage *general_page,
   ephy_lang_row_set_title (EPHY_LANG_ROW (row), desc);
   gtk_style_context_add_class (gtk_widget_get_style_context (row), "row");
 
-  event_box = ephy_lang_row_get_drag_event_box (EPHY_LANG_ROW (row));
+  event_box = ephy_lang_row_get_drag_handle (EPHY_LANG_ROW (row));
   gtk_drag_source_set (event_box, GDK_BUTTON1_MASK, entries, 1, GDK_ACTION_MOVE);
   g_signal_connect (event_box, "drag-begin", G_CALLBACK (drag_begin), general_page);
   g_signal_connect (event_box, "drag-end", G_CALLBACK (drag_end), general_page);

@@ -178,9 +178,9 @@ static void
 handle_gesture (gpointer user_data)
 {
   EphyMouseGestureController *self = EPHY_MOUSE_GESTURE_CONTROLLER (user_data);
-  GActionGroup *action_group_toolbar = gtk_widget_get_action_group (GTK_WIDGET (self->window), "toolbar");
-  GActionGroup *action_group_win = gtk_widget_get_action_group (GTK_WIDGET (self->window), "win");
-  GActionGroup *action_group_tab = gtk_widget_get_action_group (GTK_WIDGET (self->window), "tab");
+  GActionGroup *action_group_toolbar = ephy_window_get_action_group (self->window, "toolbar");
+  GActionGroup *action_group_win = ephy_window_get_action_group (self->window, "win");
+  GActionGroup *action_group_tab = ephy_window_get_action_group (self->window, "tab");
   GAction *action;
 
   switch (self->sequence_pos) {
@@ -259,7 +259,9 @@ ephy_mouse_gesture_controller_dispose (GObject *object)
 {
   EphyMouseGestureController *self = EPHY_MOUSE_GESTURE_CONTROLLER (object);
 
-  g_clear_object (&self->controller);
+  gtk_widget_remove_controller (GTK_WIDGET (self->window), self->controller);
+  self->controller = NULL;
+
   ephy_mouse_gesture_controller_unset_web_view (self);
 
   G_OBJECT_CLASS (ephy_mouse_gesture_controller_parent_class)->dispose (object);
@@ -272,8 +274,9 @@ ephy_mouse_gesture_controller_constructed (GObject *object)
 
   ephy_mouse_gesture_controller_reset (self);
 
-  self->controller = gtk_event_controller_motion_new (GTK_WIDGET (self->window));
+  self->controller = gtk_event_controller_motion_new ();
   g_signal_connect (self->controller, "motion", G_CALLBACK (ephy_mouse_gesture_controller_motion_cb), self);
+  gtk_widget_add_controller (GTK_WIDGET (self->window), self->controller);
 }
 
 static void

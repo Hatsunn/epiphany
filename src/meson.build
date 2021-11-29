@@ -13,7 +13,7 @@ enums = gnome.mkenums_simple('ephy-type-builtins',
 subdir('webextension')
 
 libephymain_sources = [
-  'bookmarks/ephy-add-bookmark-popover.c',
+#  'bookmarks/ephy-add-bookmark-popover.c',
   'bookmarks/ephy-bookmark.c',
   'bookmarks/ephy-bookmark-properties.c',
   'bookmarks/ephy-bookmark-row.c',
@@ -35,7 +35,7 @@ libephymain_sources = [
   'ephy-link.c',
   'ephy-location-controller.c',
   'ephy-lockdown.c',
-  'ephy-mouse-gesture-controller.c',
+#  'ephy-mouse-gesture-controller.c',
   'ephy-page-row.c',
   'ephy-pages-button.c',
   'ephy-pages-popover.c',
@@ -52,13 +52,13 @@ libephymain_sources = [
   'preferences/ephy-lang-row.c',
   'preferences/ephy-prefs-dialog.c',
   'preferences/passwords-view.c',
-  'preferences/ephy-search-engine-listbox.c',
-  'preferences/ephy-search-engine-row.c',
+#  'preferences/ephy-search-engine-listbox.c',
+#  'preferences/ephy-search-engine-row.c',
   'preferences/prefs-appearance-page.c',
-  'preferences/prefs-general-page.c',
+#  'preferences/prefs-general-page.c',
   'preferences/prefs-privacy-page.c',
   'preferences/webapp-additional-urls-dialog.c',
-  'synced-tabs-dialog.c',
+#  'synced-tabs-dialog.c',
   'window-commands.c',
   ephywebextension_src,
   compile_schemas,
@@ -73,7 +73,7 @@ libephymain_deps = [
   ephywidgets_dep,
   gvdb_dep,
   libarchive_dep,
-  libhandy_dep
+  libadwaita_dep
 ]
 
 libephymain_includes = include_directories(

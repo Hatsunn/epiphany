@@ -94,6 +94,7 @@ ephy_link_open (EphyLink      *link,
   return new_embed;
 }
 
+#if 0
 EphyLinkFlags
 ephy_link_flags_from_current_event (void)
 {
@@ -122,3 +123,4 @@ ephy_link_flags_from_current_event (void)
 
   return flags;
 }
+#endif

@@ -82,7 +82,7 @@ gboolean           ephy_file_launch_desktop_file            (const char         
                                                              EphyFileHelpersNotFlatpakTag  tag);
 gboolean           ephy_file_open_uri_in_default_browser    (const char                   *uri,
                                                              guint32                       user_time,
-                                                             GdkScreen                    *screen,
+                                                             GdkDisplay                   *screen,
                                                              EphyFileHelpersNotFlatpakTag  tag);
 gboolean           ephy_file_browse_to                      (GFile                        *file,
                                                              guint32                       user_time);

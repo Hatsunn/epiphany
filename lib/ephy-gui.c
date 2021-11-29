@@ -53,7 +53,6 @@ void
 ephy_gui_help (GtkWidget  *parent,
                const char *page)
 {
-  GError *error = NULL;
   char *url;
 
   if (page)
@@ -61,27 +60,12 @@ ephy_gui_help (GtkWidget  *parent,
   else
     url = g_strdup ("help:epiphany");
 
-  gtk_show_uri_on_window (GTK_WINDOW (parent), url, gtk_get_current_event_time (), &error);
-
-  if (error != NULL) {
-    GtkWidget *dialog;
-
-    dialog = gtk_message_dialog_new (GTK_WINDOW (parent),
-                                     GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
-                                     GTK_MESSAGE_ERROR,
-                                     GTK_BUTTONS_OK,
-                                     _("Could not display help: %s"),
-                                     error->message);
-    g_error_free (error);
-
-    g_signal_connect (dialog, "response",
-                      G_CALLBACK (gtk_widget_destroy), NULL);
-    gtk_widget_show (dialog);
-  }
+  gtk_show_uri (GTK_WINDOW (parent), url, GDK_CURRENT_TIME);
 
   g_free (url);
 }
 
+#if 0
 void
 ephy_gui_get_current_event (GdkEventType *otype,
                             guint        *ostate,
@@ -119,3 +103,4 @@ ephy_gui_get_current_event (GdkEventType *otype,
   if (obutton)
     *obutton = button;
 }
+#endif

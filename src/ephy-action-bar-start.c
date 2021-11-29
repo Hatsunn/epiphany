@@ -43,7 +43,6 @@ struct _EphyActionBarStart {
   GtkWidget *navigation_back;
   GtkWidget *navigation_forward;
   GtkWidget *combined_stop_reload_button;
-  GtkWidget *combined_stop_reload_image;
   GtkWidget *homepage_button;
   GtkWidget *new_tab_button;
   GtkWidget *placeholder;
@@ -63,6 +62,7 @@ typedef enum {
   WEBKIT_HISTORY_FORWARD
 } WebKitHistoryType;
 
+#if 0
 typedef struct {
   GtkWidget *button;
   EphyWindow *window;
@@ -465,6 +465,7 @@ navigation_leave_notify_event_cb (GtkButton *button,
 
   return GDK_EVENT_PROPAGATE;
 }
+#endif
 
 static void
 homepage_url_changed (GSettings  *settings,
@@ -515,7 +516,7 @@ ephy_action_bar_start_constructed (GObject *object)
   G_OBJECT_CLASS (ephy_action_bar_start_parent_class)->constructed (object);
 
   gtk_widget_init_template (GTK_WIDGET (action_bar_start));
-
+#if 0
   /* Back */
   g_signal_connect (action_bar_start->navigation_back, "button-press-event",
                     G_CALLBACK (navigation_button_press_event_cb), action_bar_start);
@@ -531,7 +532,7 @@ ephy_action_bar_start_constructed (GObject *object)
                     G_CALLBACK (navigation_button_release_event_cb), action_bar_start);
   g_signal_connect (action_bar_start->navigation_forward, "leave-notify-event",
                     G_CALLBACK (navigation_leave_notify_event_cb), action_bar_start);
-
+#endif
   /* Combined_stop_reload */
   gtk_widget_set_tooltip_text (action_bar_start->combined_stop_reload_button, _(REFRESH_BUTTON_TOOLTIP));
 
@@ -547,25 +548,22 @@ ephy_action_bar_start_constructed (GObject *object)
   } else {
     gtk_widget_set_visible (action_bar_start->homepage_button, FALSE);
   }
-  g_signal_connect (action_bar_start->homepage_button, "button-release-event",
-                    G_CALLBACK (homepage_button_release_event_cb), action_bar_start);
+//  g_signal_connect (action_bar_start->homepage_button, "button-release-event",
+//                    G_CALLBACK (homepage_button_release_event_cb), action_bar_start);
 
   /* New Tab Button */
   update_new_tab_button_visibility (action_bar_start);
 
-  g_signal_connect (action_bar_start->new_tab_button, "button-release-event",
-                    G_CALLBACK (new_tab_button_release_event_cb), action_bar_start);
+//  g_signal_connect (action_bar_start->new_tab_button, "button-release-event",
+//                    G_CALLBACK (new_tab_button_release_event_cb), action_bar_start);
 
   if (is_desktop_pantheon ()) {
-    gtk_button_set_image (GTK_BUTTON (action_bar_start->navigation_back),
-                          gtk_image_new_from_icon_name ("go-previous-symbolic",
-                                                        get_icon_size ()));
-    gtk_button_set_image (GTK_BUTTON (action_bar_start->navigation_forward),
-                          gtk_image_new_from_icon_name ("go-next-symbolic",
-                                                        get_icon_size ()));
-    gtk_button_set_image (GTK_BUTTON (action_bar_start->homepage_button),
-                          gtk_image_new_from_icon_name ("go-home-symbolic",
-                                                        get_icon_size ()));
+    gtk_button_set_icon_name (GTK_BUTTON (action_bar_start->navigation_back),
+                              "go-previous-symbolic");
+    gtk_button_set_icon_name (GTK_BUTTON (action_bar_start->navigation_forward),
+                              "go-next-symbolic");
+    gtk_button_set_icon_name (GTK_BUTTON (action_bar_start->homepage_button),
+                              "go-home-symbolic");
   }
 
   if (ephy_profile_dir_is_web_application ()) {
@@ -601,9 +599,6 @@ ephy_action_bar_start_class_init (EphyActionBarStartClass *klass)
                                         combined_stop_reload_button);
   gtk_widget_class_bind_template_child (widget_class,
                                         EphyActionBarStart,
-                                        combined_stop_reload_image);
-  gtk_widget_class_bind_template_child (widget_class,
-                                        EphyActionBarStart,
                                         homepage_button);
   gtk_widget_class_bind_template_child (widget_class,
                                         EphyActionBarStart,
@@ -636,16 +631,14 @@ ephy_action_bar_start_change_combined_stop_reload_state (EphyActionBarStart *act
                                                          gboolean            loading)
 {
   if (loading) {
-    gtk_image_set_from_icon_name (GTK_IMAGE (action_bar_start->combined_stop_reload_image),
-                                  "process-stop-symbolic",
-                                  get_icon_size ());
+    gtk_button_set_icon_name (GTK_BUTTON (action_bar_start->combined_stop_reload_button),
+                              "process-stop-symbolic");
     /* Translators: tooltip for the stop button */
     gtk_widget_set_tooltip_text (action_bar_start->combined_stop_reload_button,
                                  _("Stop loading the current page"));
   } else {
-    gtk_image_set_from_icon_name (GTK_IMAGE (action_bar_start->combined_stop_reload_image),
-                                  "view-refresh-symbolic",
-                                  get_icon_size ());
+    gtk_button_set_icon_name (GTK_BUTTON (action_bar_start->combined_stop_reload_button),
+                              "view-refresh-symbolic");
     gtk_widget_set_tooltip_text (action_bar_start->combined_stop_reload_button,
                                  _(REFRESH_BUTTON_TOOLTIP));
   }

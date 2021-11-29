@@ -107,8 +107,9 @@ static void
 popup_cmd_copy_to_clipboard (EphyWindow *window,
                              const char *text)
 {
-  gtk_clipboard_set_text (gtk_clipboard_get_default (gdk_display_get_default ()),
-                          text, -1);
+  GdkClipboard *clipboard = gtk_widget_get_clipboard (GTK_WIDGET (window));
+
+  gdk_clipboard_set_text (clipboard, text);
 }
 
 void
@@ -149,6 +150,7 @@ typedef struct {
   EphyDownload *download;
 } SavePropertyURLData;
 
+#if 0
 static void
 filename_confirmed_cb (GtkFileChooser      *dialog,
                        GtkResponseType      response,
@@ -207,6 +209,7 @@ filename_suggested_cb (EphyDownload        *download,
                     G_CALLBACK (filename_confirmed_cb), data);
   gtk_native_dialog_show (GTK_NATIVE_DIALOG (dialog));
 }
+#endif
 
 static void
 save_property_url (const char *title,
@@ -227,9 +230,9 @@ save_property_url (const char *title,
   data->title = g_strdup (title);
   data->window = g_object_ref (window);
   data->download = download;
-  g_signal_connect (download, "filename-suggested",
-                    G_CALLBACK (filename_suggested_cb),
-                    data);
+//  g_signal_connect (download, "filename-suggested",
+//                    G_CALLBACK (filename_suggested_cb),
+//                    data);
 }
 
 void

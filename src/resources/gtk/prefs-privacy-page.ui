@@ -1,24 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
   <requires lib="gtk+" version="3.0"/>
-  <template class="PrefsPrivacyPage" parent="HdyPreferencesPage">
+  <template class="PrefsPrivacyPage" parent="AdwPreferencesPage">
     <property name="icon_name">preferences-system-privacy-symbolic</property>
     <property name="title" translatable="yes">Privacy</property>
-    <property name="visible">True</property>
     <child>
-      <object class="HdyPreferencesGroup" id="safe_browsing_group">
+      <object class="AdwPreferencesGroup" id="safe_browsing_group">
         <property name="title" translatable="yes">Web Safety</property>
-        <property name="visible">True</property>
         <child>
-          <object class="HdyActionRow">
+          <object class="AdwActionRow">
             <property name="activatable_widget">enable_safe_browsing_switch</property>
             <property name="title" translatable="yes">Block Dangerous Web_sites</property>
             <property name="use_underline">True</property>
-            <property name="visible">True</property>
             <child>
               <object class="GtkSwitch" id="enable_safe_browsing_switch">
                 <property name="valign">center</property>
-                <property name="visible">True</property>
               </object>
             </child>
           </object>
@@ -26,25 +22,23 @@
       </object>
     </child>
     <child>
-      <object class="HdyPreferencesGroup">
+      <object class="AdwPreferencesGroup">
         <property name="title" translatable="yes">Web Tracking</property>
         <property name="visible">True</property>
         <child>
-          <object class="HdyActionRow">
+          <object class="AdwActionRow">
             <property name="activatable_widget">enable_itp_switch</property>
             <property name="title" translatable="yes">Intelligent _Tracking Prevention</property>
             <property name="use_underline">True</property>
-            <property name="visible">True</property>
             <child>
               <object class="GtkSwitch" id="enable_itp_switch">
                 <property name="valign">center</property>
-                <property name="visible">True</property>
               </object>
             </child>
           </object>
         </child>
         <child>
-          <object class="HdyActionRow">
+          <object class="AdwActionRow">
             <property name="activatable_widget">enable_website_data_storage_switch</property>
             <property name="subtitle" translatable="yes">Allow websites to store cookies, databases, and local storage data.</property>
             <property name="title" translatable="yes">_Website Data Storage</property>
@@ -61,11 +55,11 @@
       </object>
     </child>
     <child>
-      <object class="HdyPreferencesGroup">
+      <object class="AdwPreferencesGroup">
         <property name="title" translatable="yes">Search Suggestions</property>
         <property name="visible">True</property>
         <child>
-          <object class="HdyActionRow">
+          <object class="AdwActionRow">
             <property name="activatable_widget">enable_google_search_suggestions_switch</property>
             <property name="subtitle" translatable="yes">Enable search suggestions in the URL entry.</property>
             <property name="title" translatable="yes">_Google Search Suggestions</property>
@@ -82,11 +76,11 @@
       </object>
     </child>
     <child>
-      <object class="HdyPreferencesGroup">
+      <object class="AdwPreferencesGroup">
         <property name="title" translatable="yes">Personal Data</property>
         <property name="visible">True</property>
         <child>
-          <object class="HdyActionRow">
+          <object class="AdwActionRow">
             <property name="activatable">True</property>
             <property name="subtitle" translatable="yes">You can clear stored personal data.</property>
             <property name="title" translatable="yes">Clear Personal _Data</property>
@@ -104,11 +98,11 @@
       </object>
     </child>
     <child>
-      <object class="HdyPreferencesGroup">
+      <object class="AdwPreferencesGroup">
         <property name="title" translatable="yes">Passwords</property>
         <property name="visible">True</property>
         <child>
-          <object class="HdyActionRow">
+          <object class="AdwActionRow">
             <property name="activatable">True</property>
             <property name="title" translatable="yes">_Passwords</property>
             <property name="use_underline">True</property>
@@ -123,15 +117,13 @@
           </object>
         </child>
         <child>
-          <object class="HdyActionRow">
+          <object class="AdwActionRow">
             <property name="activatable_widget">remember_passwords_switch</property>
             <property name="title" translatable="yes">_Remember Passwords</property>
             <property name="use_underline">True</property>
-            <property name="visible">True</property>
             <child>
               <object class="GtkSwitch" id="remember_passwords_switch">
                 <property name="valign">center</property>
-                <property name="visible">True</property>
               </object>
             </child>
           </object>

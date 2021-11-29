@@ -21,12 +21,13 @@
 #include "config.h"
 #include "ephy-data-view.h"
 
+#include <adwaita.h>
 #include <ctype.h>
 
 typedef struct {
   GtkWidget *box;
   GtkWidget *child;
-  GtkWidget *header_bar;
+  GtkWidget *window_title;
   GtkWidget *back_button;
   GtkWidget *clear_button;
   GtkWidget *search_bar;
@@ -41,9 +42,17 @@ typedef struct {
   gboolean has_search_results : 1;
   gboolean can_clear : 1;
   char *search_text;
+  char *search_description;
 } EphyDataViewPrivate;
 
-G_DEFINE_TYPE_WITH_PRIVATE (EphyDataView, ephy_data_view, GTK_TYPE_BIN)
+static void ephy_data_view_buildable_init (GtkBuildableIface *iface);
+
+G_DEFINE_TYPE_WITH_CODE (EphyDataView, ephy_data_view, GTK_TYPE_WIDGET,
+                         G_ADD_PRIVATE (EphyDataView)
+                         G_IMPLEMENT_INTERFACE (GTK_TYPE_BUILDABLE,
+                                                ephy_data_view_buildable_init))
+
+static GtkBuildableIface *parent_buildable_iface;
 
 enum {
   PROP_0,
@@ -121,13 +130,14 @@ on_search_entry_changed (GtkSearchEntry *entry,
   EphyDataViewPrivate *priv = ephy_data_view_get_instance_private (self);
   const char *text;
 
-  text = gtk_entry_get_text (GTK_ENTRY (entry));
+  text = gtk_editable_get_text (GTK_EDITABLE (entry));
   g_free (priv->search_text);
   priv->search_text = g_strdup (text);
 
   g_object_notify_by_pspec (G_OBJECT (self), obj_properties[PROP_SEARCH_TEXT]);
 }
 
+#if 0
 gboolean
 ephy_data_view_handle_event (EphyDataView *self,
                              GdkEvent     *event)
@@ -169,6 +179,7 @@ ephy_data_view_handle_event (EphyDataView *self,
 
   return GDK_EVENT_PROPAGATE;
 }
+#endif
 
 static void
 ephy_data_view_set_property (GObject      *object,
@@ -181,7 +192,7 @@ ephy_data_view_set_property (GObject      *object,
 
   switch (prop_id) {
     case PROP_TITLE:
-      gtk_header_bar_set_title (GTK_HEADER_BAR (priv->header_bar), g_value_get_string (value));
+      adw_window_title_set_title (ADW_WINDOW_TITLE (priv->window_title), g_value_get_string (value));
       break;
     case PROP_CLEAR_ACTION_NAME:
       gtk_actionable_set_action_name (GTK_ACTIONABLE (priv->clear_button), g_value_get_string (value));
@@ -196,14 +207,18 @@ ephy_data_view_set_property (GObject      *object,
       ephy_data_view_set_clear_button_tooltip (self, g_value_get_string (value));
       break;
     case PROP_SEARCH_DESCRIPTION:
-      gtk_entry_set_placeholder_text (GTK_ENTRY (priv->search_entry), g_value_get_string (value));
-      atk_object_set_description (gtk_widget_get_accessible (GTK_WIDGET (self)), g_value_get_string (value));
+      g_clear_pointer (&priv->search_description, g_free);
+      priv->search_description = g_value_dup_string (value);
+      gtk_accessible_update_property (GTK_ACCESSIBLE (self),
+                                      GTK_ACCESSIBLE_PROPERTY_DESCRIPTION,
+                                      priv->search_description,
+                                      -1);
       break;
     case PROP_EMPTY_TITLE:
-      hdy_status_page_set_title (HDY_STATUS_PAGE (priv->empty_page), g_value_get_string (value));
+      adw_status_page_set_title (ADW_STATUS_PAGE (priv->empty_page), g_value_get_string (value));
       break;
     case PROP_EMPTY_DESCRIPTION:
-      hdy_status_page_set_description (HDY_STATUS_PAGE (priv->empty_page), g_value_get_string (value));
+      adw_status_page_set_description (ADW_STATUS_PAGE (priv->empty_page), g_value_get_string (value));
       break;
     case PROP_IS_LOADING:
       ephy_data_view_set_is_loading (self, g_value_get_boolean (value));
@@ -234,7 +249,7 @@ ephy_data_view_get_property (GObject    *object,
 
   switch (prop_id) {
     case PROP_TITLE:
-      g_value_set_string (value, gtk_header_bar_get_title (GTK_HEADER_BAR (priv->header_bar)));
+      g_value_set_string (value, adw_window_title_get_title (ADW_WINDOW_TITLE (priv->window_title)));
       break;
     case PROP_CLEAR_ACTION_NAME:
       g_value_set_string (value, gtk_actionable_get_action_name (GTK_ACTIONABLE (priv->clear_button)));
@@ -249,13 +264,13 @@ ephy_data_view_get_property (GObject    *object,
       g_value_set_string (value, ephy_data_view_get_clear_button_tooltip (self));
       break;
     case PROP_SEARCH_DESCRIPTION:
-      g_value_set_string (value, gtk_entry_get_placeholder_text (GTK_ENTRY (priv->search_entry)));
+      g_value_set_string (value, priv->search_description);
       break;
     case PROP_EMPTY_TITLE:
-      g_value_set_string (value, hdy_status_page_get_title (HDY_STATUS_PAGE (priv->empty_page)));
+      g_value_set_string (value, adw_status_page_get_title (ADW_STATUS_PAGE (priv->empty_page)));
       break;
     case PROP_EMPTY_DESCRIPTION:
-      g_value_set_string (value, hdy_status_page_get_description (HDY_STATUS_PAGE (priv->empty_page)));
+      g_value_set_string (value, adw_status_page_get_description (ADW_STATUS_PAGE (priv->empty_page)));
       break;
     case PROP_SEARCH_TEXT:
       g_value_set_string (value, ephy_data_view_get_search_text (self));
@@ -279,34 +294,26 @@ ephy_data_view_get_property (GObject    *object,
 }
 
 static void
+ephy_data_view_dispose (GObject *object)
+{
+  EphyDataView *self = EPHY_DATA_VIEW (object);
+  EphyDataViewPrivate *priv = ephy_data_view_get_instance_private (self);
+
+  g_clear_pointer (&priv->box, gtk_widget_unparent);
+
+  G_OBJECT_CLASS (ephy_data_view_parent_class)->dispose (object);
+}
+
+static void
 ephy_data_view_finalize (GObject *object)
 {
   EphyDataView *self = EPHY_DATA_VIEW (object);
   EphyDataViewPrivate *priv = ephy_data_view_get_instance_private (self);
 
   g_free (priv->search_text);
+  g_free (priv->search_description);
 
   G_OBJECT_CLASS (ephy_data_view_parent_class)->finalize (object);
-}
-
-static void
-ephy_data_view_add (GtkContainer *container,
-                    GtkWidget    *child)
-{
-  EphyDataView *self = EPHY_DATA_VIEW (container);
-  EphyDataViewPrivate *priv = ephy_data_view_get_instance_private (self);
-
-  if (!priv->box) {
-    GTK_CONTAINER_CLASS (ephy_data_view_parent_class)->add (container, child);
-    return;
-  }
-
-  g_assert (!priv->child);
-
-  priv->child = child;
-  gtk_container_add (GTK_CONTAINER (priv->stack), child);
-
-  update (self);
 }
 
 static void
@@ -314,18 +321,16 @@ ephy_data_view_class_init (EphyDataViewClass *klass)
 {
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
   GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
-  GtkContainerClass *container_class = GTK_CONTAINER_CLASS (klass);
 
   object_class->set_property = ephy_data_view_set_property;
   object_class->get_property = ephy_data_view_get_property;
+  object_class->dispose = ephy_data_view_dispose;
   object_class->finalize = ephy_data_view_finalize;
-
-  container_class->add = ephy_data_view_add;
 
   obj_properties[PROP_TITLE] =
     g_param_spec_string ("title",
                          "Title",
-                         "The title used for the top HdyHeaderBar",
+                         "The title used for the top header bar",
                          NULL,
                          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
@@ -442,7 +447,7 @@ ephy_data_view_class_init (EphyDataViewClass *klass)
                                                "/org/gnome/epiphany/gtk/data-view.ui");
 
   gtk_widget_class_bind_template_child_private (widget_class, EphyDataView, box);
-  gtk_widget_class_bind_template_child_private (widget_class, EphyDataView, header_bar);
+  gtk_widget_class_bind_template_child_private (widget_class, EphyDataView, window_title);
   gtk_widget_class_bind_template_child_private (widget_class, EphyDataView, back_button);
   gtk_widget_class_bind_template_child_private (widget_class, EphyDataView, clear_button);
   gtk_widget_class_bind_template_child_private (widget_class, EphyDataView, empty_page);
@@ -455,6 +460,8 @@ ephy_data_view_class_init (EphyDataViewClass *klass)
   gtk_widget_class_bind_template_callback (widget_class, on_back_button_clicked);
   gtk_widget_class_bind_template_callback (widget_class, on_clear_button_clicked);
   gtk_widget_class_bind_template_callback (widget_class, on_search_entry_changed);
+
+  gtk_widget_class_set_layout_manager_type (widget_class, GTK_TYPE_BIN_LAYOUT);
 }
 
 static void
@@ -464,12 +471,42 @@ ephy_data_view_init (EphyDataView *self)
 
   gtk_widget_init_template (GTK_WIDGET (self));
 
-  hdy_search_bar_connect_entry (HDY_SEARCH_BAR (priv->search_bar), GTK_ENTRY (priv->search_entry));
+  gtk_search_bar_connect_entry (GTK_SEARCH_BAR (priv->search_bar),
+                                GTK_EDITABLE (priv->search_entry));
 
-  hdy_status_page_set_icon_name (HDY_STATUS_PAGE (priv->empty_page),
+  adw_status_page_set_icon_name (ADW_STATUS_PAGE (priv->empty_page),
                                  APPLICATION_ID "-symbolic");
 
   update (self);
+}
+
+static void
+ephy_data_view_add_child (GtkBuildable *buildable,
+                          GtkBuilder   *builder,
+                          GObject      *child,
+                          const char   *type)
+{
+  EphyDataView *self = EPHY_DATA_VIEW (buildable);
+  EphyDataViewPrivate *priv = ephy_data_view_get_instance_private (self);
+
+  if (!priv->box || !GTK_IS_WIDGET (child)) {
+    parent_buildable_iface->add_child (buildable, builder, child, type);
+    return;
+  }
+
+  g_assert (!priv->child);
+
+  priv->child = GTK_WIDGET (child);
+  gtk_stack_add_child (GTK_STACK (priv->stack), priv->child);
+
+  update (self);
+}
+
+static void
+ephy_data_view_buildable_init (GtkBuildableIface *iface)
+{
+  parent_buildable_iface = g_type_interface_peek_parent (iface);
+  iface->add_child = ephy_data_view_add_child;
 }
 
 const gchar *

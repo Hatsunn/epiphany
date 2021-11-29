@@ -621,7 +621,7 @@ ephy_download_init (EphyDownload *download)
 
   download->action = EPHY_DOWNLOAD_ACTION_NONE;
 
-  download->start_time = gtk_get_current_event_time ();
+  download->start_time = g_get_monotonic_time (); // FIXME this is wrong
 
   download->show_notification = TRUE;
 }
@@ -793,6 +793,7 @@ typedef struct {
   GtkFileChooser *file_chooser;
 } SuggestedFilenameData;
 
+#if 0
 static void
 filename_suggested_dialog_cb (GtkDialog             *dialog,
                               GtkResponseType        response,
@@ -815,7 +816,7 @@ filename_suggested_dialog_cb (GtkDialog             *dialog,
     ephy_download_cancel (data->download);
   }
 
-  gtk_widget_destroy (GTK_WIDGET (dialog));
+  gtk_window_destroy (GTK_WINDOW (dialog));
 
   g_free (data->suggested_filename);
   g_free (data);
@@ -885,8 +886,6 @@ filename_suggested_cb (EphyDownload *download,
   gtk_file_chooser_set_current_folder (GTK_FILE_CHOOSER (filechooser), g_settings_get_string (EPHY_SETTINGS_WEB, EPHY_PREFS_WEB_LAST_DOWNLOAD_DIRECTORY));
   gtk_box_pack_start (GTK_BOX (box), filechooser, FALSE, TRUE, 0);
 
-  gtk_widget_show_all (box);
-
   data = g_new0 (SuggestedFilenameData, 1);
   data->download = download;
   data->webkit_download = webkit_download;
@@ -897,6 +896,7 @@ filename_suggested_cb (EphyDownload *download,
                     G_CALLBACK (filename_suggested_dialog_cb), data);
   gtk_window_present (GTK_WINDOW (dialog));
 }
+#endif
 
 EphyDownload *
 ephy_download_new_internal (WebKitDownload *download)
@@ -946,9 +946,9 @@ ephy_download_new (WebKitDownload *download)
                            ephy_download, 0);
 
   if (!ephy_is_running_inside_sandbox () && g_settings_get_boolean (EPHY_SETTINGS_WEB, EPHY_PREFS_WEB_ASK_ON_DOWNLOAD)) {
-    g_signal_connect (ephy_download, "filename-suggested",
-                      G_CALLBACK (filename_suggested_cb),
-                      NULL);
+//    g_signal_connect (ephy_download, "filename-suggested",
+//                      G_CALLBACK (filename_suggested_cb),
+//                      NULL);
   }
 
   return ephy_download;

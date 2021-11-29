@@ -23,7 +23,7 @@
 
 #pragma once
 
-#include <gtk/gtk.h>
+#include <adwaita.h>
 
 #include "ephy-adaptive-mode.h"
 #include "ephy-bookmark-states.h"
@@ -33,7 +33,7 @@ G_BEGIN_DECLS
 
 #define EPHY_TYPE_LOCATION_ENTRY (ephy_location_entry_get_type())
 
-G_DECLARE_FINAL_TYPE (EphyLocationEntry, ephy_location_entry, EPHY, LOCATION_ENTRY, GtkBin)
+G_DECLARE_FINAL_TYPE (EphyLocationEntry, ephy_location_entry, EPHY, LOCATION_ENTRY, AdwBin)
 
 
 GtkWidget      *ephy_location_entry_new                        (void);
@@ -59,8 +59,6 @@ void            ephy_location_entry_set_add_bookmark_popover   (EphyLocationEntr
 
 GtkPopover     *ephy_location_entry_get_add_bookmark_popover   (EphyLocationEntry *entry);
 
-GtkWidget      *ephy_location_entry_get_entry                  (EphyLocationEntry *entry);
-
 GtkWidget      *ephy_location_entry_get_bookmark_widget        (EphyLocationEntry *entry);
 
 GtkWidget      *ephy_location_entry_get_reader_mode_widget     (EphyLocationEntry *entry);
@@ -82,6 +80,8 @@ void            ephy_location_entry_page_action_add            (EphyLocationEntr
 void            ephy_location_entry_page_action_clear          (EphyLocationEntry *entry);
 
 void            ephy_location_entry_set_adaptive_mode          (EphyLocationEntry *entry,
-                                                                EphyAdaptiveMode   adpative_mode);
+                                                                EphyAdaptiveMode   adaptive_mode);
+
+void            ephy_location_bar_grab_focus_without_selecting (EphyLocationEntry *entry);
 
 G_END_DECLS

@@ -20,7 +20,7 @@
 
 #pragma once
 
-#include <handy.h>
+#include <adwaita.h>
 
 G_BEGIN_DECLS
 
@@ -37,7 +37,7 @@ const char     *ephy_lang_row_get_code                (EphyLangRow *self);
 void            ephy_lang_row_set_code                (EphyLangRow *self,
                                                        const char  *code);
 
-GtkWidget      *ephy_lang_row_get_drag_event_box      (EphyLangRow *self);
+GtkWidget      *ephy_lang_row_get_drag_handle         (EphyLangRow *self);
 
 void            ephy_lang_row_set_delete_sensitive    (EphyLangRow *self,
                                                        gboolean     sensitive);

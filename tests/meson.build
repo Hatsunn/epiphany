@@ -72,25 +72,25 @@ if get_option('unit_tests').enabled()
        env: envs
   )
 
-  history_test = executable('test-ephy-history',
-    'ephy-history-test.c',
-    dependencies: ephymain_dep,
-    c_args: test_cargs,
-  )
-  test('History test',
-       history_test,
-       env: envs
-  )
+#  history_test = executable('test-ephy-history',
+#    'ephy-history-test.c',
+#    dependencies: ephymain_dep,
+#    c_args: test_cargs,
+#  )
+#  test('History test',
+#       history_test,
+#       env: envs
+#  )
 
-  location_entry_test = executable('test-location-entry',
-    'ephy-location-entry-test.c',
-    dependencies: ephymain_dep,
-    c_args: test_cargs,
-  )
-  test('Location entry test',
-       location_entry_test,
-       env: envs
-  )
+#  location_entry_test = executable('test-location-entry',
+#    'ephy-location-entry-test.c',
+#    dependencies: ephymain_dep,
+#    c_args: test_cargs,
+#  )
+#  test('Location entry test',
+#       location_entry_test,
+#       env: envs
+#  )
 
   migration_test = executable('test-ephy-migration',
     'ephy-migration-test.c',
