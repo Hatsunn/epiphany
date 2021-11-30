@@ -1788,6 +1788,7 @@ save_as_application_proceed (EphyApplicationDialogData *data)
                                               webkit_web_view_get_uri (WEBKIT_WEB_VIEW (data->view)),
                                               app_name,
                                               gtk_image_get_pixbuf (GTK_IMAGE (data->image)),
+                                              NULL, NULL, /* icon_path, install_token */
                                               data->webapp_options);
 
   if (desktop_file)

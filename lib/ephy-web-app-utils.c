@@ -242,6 +242,21 @@ ephy_web_application_get_profile_directory (const char *id)
   return ephy_web_application_get_directory_under (id, g_get_user_data_dir ());
 }
 
+/**
+ * ephy_web_application_get_desktop_path:
+ * @app: the #EphyWebApplication
+ *
+ * Gets the path to the .desktop file for @app
+ *
+ * Returns: (transfer full): A newly allocated string.
+ **/
+char *
+ephy_web_application_get_desktop_path (EphyWebApplication *app)
+{
+  g_autofree char *profile_dir = ephy_web_application_get_profile_directory (app->id);
+  return g_build_filename (profile_dir, app->desktop_file, NULL);
+}
+
 static char *
 ephy_web_application_get_cache_directory (const char *id)
 {
@@ -335,7 +350,7 @@ create_desktop_file (const char *id,
                      const char *name,
                      const char *address,
                      const char *profile_dir,
-                     GdkPixbuf  *icon)
+                     const char *icon_path)
 {
   g_autofree char *filename = NULL;
   g_autoptr (GKeyFile) file = NULL;
@@ -365,18 +380,8 @@ create_desktop_file (const char *id,
   g_key_file_set_value (file, "Desktop Entry", "Type", "Application");
   g_key_file_set_value (file, "Desktop Entry", "Categories", "GNOME;GTK;");
 
-  if (icon) {
-    g_autoptr (GOutputStream) stream = NULL;
-    g_autofree char *path = NULL;
-    g_autoptr (GFile) image = NULL;
-
-    path = g_build_filename (profile_dir, EPHY_WEB_APP_ICON_NAME, NULL);
-    image = g_file_new_for_path (path);
-
-    stream = (GOutputStream *)g_file_create (image, 0, NULL, NULL);
-    gdk_pixbuf_save_to_stream (icon, stream, "png", NULL, NULL, NULL);
-    g_key_file_set_value (file, "Desktop Entry", "Icon", path);
-  }
+  if (icon_path)
+    g_key_file_set_value (file, "Desktop Entry", "Icon", icon_path);
 
   wm_class = g_strconcat (EPHY_WEB_APP_GAPPLICATION_ID_PREFIX, id, NULL);
   g_key_file_set_value (file, "Desktop Entry", "StartupWMClass", wm_class);
@@ -409,7 +414,10 @@ create_desktop_file (const char *id,
  * @id: the identifier for the new web application
  * @address: the address of the new web application
  * @name: the name for the new web application
- * @icon: the icon for the new web application
+ * @icon_pixbuf: the icon for the new web application as a #GdkPixbuf
+ * @icon_path: the path to the icon, used instead of @icon_pixbuf
+ * @install_token: the install token acquired via portal, used for
+ *   non-interactive sandboxed installation
  * @options: the options for the new web application
  *
  * Creates a new Web Application for @address.
@@ -420,13 +428,18 @@ char *
 ephy_web_application_create (const char                *id,
                              const char                *address,
                              const char                *name,
-                             GdkPixbuf                 *icon,
+                             GdkPixbuf                 *icon_pixbuf,
+                             const char                *icon_path,
+                             const char                *install_token,
                              EphyWebApplicationOptions  options)
 {
   g_autofree char *app_file = NULL;
   g_autofree char *profile_dir = NULL;
   g_autofree char *desktop_file_path = NULL;
+  g_autofree char *icon_path_owned = NULL;
   int fd;
+
+  g_return_val_if_fail (!icon_pixbuf || !icon_path, NULL);
 
   /* If there's already a WebApp profile for the contents of this
    * view, do nothing. */
@@ -454,8 +467,22 @@ ephy_web_application_create (const char                *id,
   }
   close (fd);
 
+  /* Write the icon to a file */
+  if (icon_pixbuf) {
+    g_autoptr (GOutputStream) stream = NULL;
+    g_autoptr (GFile) image = NULL;
+
+    icon_path_owned = g_build_filename (profile_dir, EPHY_WEB_APP_ICON_NAME, NULL);
+    image = g_file_new_for_path (icon_path_owned);
+
+    stream = (GOutputStream *)g_file_create (image, 0, NULL, NULL);
+    gdk_pixbuf_save_to_stream (icon_pixbuf, stream, "png", NULL, NULL, NULL);
+  } else {
+    icon_path_owned = g_strdup (icon_path);
+  }
+
   /* Create the deskop file. */
-  desktop_file_path = create_desktop_file (id, name, address, profile_dir, icon);
+  desktop_file_path = create_desktop_file (id, name, address, profile_dir, icon_path_owned);
   if (desktop_file_path)
     ephy_web_application_initialize_settings (profile_dir, options);
 
@@ -586,7 +613,6 @@ ephy_web_application_for_profile_directory (const char *profile_dir)
   g_auto (GStrv) argv = NULL;
   g_autoptr (GFile) file = NULL;
   g_autoptr (GFileInfo) file_info = NULL;
-  guint64 created;
   g_autoptr (GDate) date = NULL;
 
   id = get_app_id_from_profile_directory (profile_dir);
@@ -614,13 +640,20 @@ ephy_web_application_for_profile_directory (const char *profile_dir)
 
   /* FIXME: this should use TIME_CREATED but it does not seem to be working. */
   file_info = g_file_query_info (file, G_FILE_ATTRIBUTE_TIME_MODIFIED, 0, NULL, NULL);
-  created = g_file_info_get_attribute_uint64 (file_info, G_FILE_ATTRIBUTE_TIME_MODIFIED);
+  app->install_date_uint64 = g_file_info_get_attribute_uint64 (file_info, G_FILE_ATTRIBUTE_TIME_MODIFIED);
 
   date = g_date_new ();
-  g_date_set_time_t (date, (time_t)created);
+  g_date_set_time_t (date, (time_t)app->install_date_uint64);
   g_date_strftime (app->install_date, 127, "%x", date);
 
   return g_steal_pointer (&app);
+}
+
+EphyWebApplication *
+ephy_web_application_for_desktop_path (const char *desktop_path)
+{
+  g_autofree char *profile_dir = g_path_get_dirname (desktop_path);
+  return ephy_web_application_for_profile_directory (profile_dir);
 }
 
 static GList *
