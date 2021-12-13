@@ -51,6 +51,8 @@ handle_get_installed_web_apps (EphyWebAppProvider        *skeleton,
   GList *apps;
   GList *l;
 
+  g_debug ("%s", G_STRFUNC);
+
   g_application_hold (G_APPLICATION (self));
 
   g_variant_builder_init (&builder, G_VARIANT_TYPE ("aa{sv}"));
@@ -98,6 +100,8 @@ handle_install_web_app (EphyWebAppProvider        *skeleton,
 {
   g_autofree char *id = NULL;
   g_autofree char *desktop_path = NULL;
+
+  g_debug ("%s", G_STRFUNC);
 
   g_application_hold (G_APPLICATION (self));
 
@@ -159,6 +163,8 @@ handle_uninstall_web_app (EphyWebAppProvider        *skeleton,
 {
   g_autoptr (EphyWebApplication) app = NULL;
 
+  g_debug ("%s", G_STRFUNC);
+
   g_application_hold (G_APPLICATION (self));
 
   if (!desktop_path || !g_path_is_absolute (desktop_path)) {
@@ -205,6 +211,8 @@ ephy_web_app_provider_service_dbus_register (GApplication     *application,
 {
   EphyWebAppProviderService *self;
 
+  g_debug ("registering at object path %s", object_path);
+
   if (!G_APPLICATION_CLASS (ephy_web_app_provider_service_parent_class)->dbus_register (application,
                                                                                         connection,
                                                                                         object_path,
@@ -236,6 +244,8 @@ ephy_web_app_provider_service_dbus_unregister (GApplication    *application,
 {
   EphyWebAppProviderService *self;
   GDBusInterfaceSkeleton *skeleton;
+
+  g_debug ("unregistering at object path %s", object_path);
 
   self = EPHY_WEB_APP_PROVIDER_SERVICE (application);
   skeleton = G_DBUS_INTERFACE_SKELETON (self->skeleton);

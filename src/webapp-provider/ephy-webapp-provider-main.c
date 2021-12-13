@@ -34,6 +34,10 @@ main (gint    argc,
   int status;
   GError *error = NULL;
 
+  g_setenv ("G_MESSAGES_DEBUG", "all", TRUE);
+
+  g_debug ("started %s", argv[0]);
+
   /* Initialize the i18n stuff */
   setlocale (LC_ALL, "");
   bindtextdomain (GETTEXT_PACKAGE, LOCALEDIR);
@@ -51,6 +55,8 @@ main (gint    argc,
   status = g_application_run (G_APPLICATION (webapp_provider), argc, argv);
 
   ephy_file_helpers_shutdown ();
+
+  g_debug ("stopping %s with status %d", argv[0], status);
 
   return status;
 }
