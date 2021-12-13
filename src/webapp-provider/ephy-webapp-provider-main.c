@@ -35,6 +35,7 @@ main (gint    argc,
   GError *error = NULL;
 
   g_setenv ("G_MESSAGES_DEBUG", "all", TRUE);
+  g_setenv ("GIO_USE_VFS", "local", TRUE);
 
   g_debug ("started %s", argv[0]);
 
