@@ -280,7 +280,9 @@ ephy_web_app_provider_service_class_init (EphyWebAppProviderServiceClass *klass)
 EphyWebAppProviderService *
 ephy_web_app_provider_service_new (void)
 {
-  g_autofree gchar *app_id = g_strconcat (APPLICATION_ID, ".WebAppProvider", NULL);
+  /* Note the application ID is constant for release/devel/canary builds
+   * because we want to always use the same well-known D-Bus name */
+  g_autofree gchar *app_id = g_strconcat ("org.gnome.Epiphany.WebAppProvider", NULL);
 
   return g_object_new (EPHY_TYPE_WEB_APP_PROVIDER_SERVICE,
                        "application-id", app_id,

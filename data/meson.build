@@ -98,7 +98,7 @@ configure_file(
 
 configure_file(
   input: 'org.gnome.Epiphany.WebAppProvider.service.in',
-  output: '@0@.WebAppProvider.service'.format(application_id),
+  output: 'org.gnome.Epiphany.WebAppProvider.service',
   configuration: service_conf,
   install_dir: servicedir
 )
