@@ -19,11 +19,17 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see http://www.gnu.org/licenses/.
  *
- * Changes
+ * Changes: 
  * - replace Firefox specific css extensions with WebKit css extensions
  * - append FeedView css selectors
  *
  * - Adjusted for Epiphany (Removing footer)
+ *
+ * - updated all the colours to use css variables
+ * - added styling for of tables
+ * - updates font-families to use common fonts
+ * - switch to using em units where it makes sense
+ * - fixed lack of link styling
  *
  * Notes:
  *
@@ -85,7 +91,7 @@
 }
 
 
-html{
+html {
   width: 95%;
   margin: 0 2.5%;
 }
@@ -226,7 +232,7 @@ ol {
 }
 
 li {
-  margin: 0 0 1em 0;
+  margin: 0 0 0.5em 0;
 }
 
 table,
