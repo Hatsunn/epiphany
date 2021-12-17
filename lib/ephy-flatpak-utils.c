@@ -140,3 +140,17 @@ ephy_open_uri_via_flatpak_portal (const char *uri)
 {
   ephy_open_uri (uri, FALSE);
 }
+
+gboolean
+ephy_can_install_web_apps (void)
+{
+  if (!ephy_is_running_inside_sandbox ())
+    return TRUE;
+
+#if USE_LIBPORTAL
+  /* TODO bump version requirement of libportal and also check that the portal is available */
+  return TRUE;
+#else
+  return FALSE;
+#endif
+}
